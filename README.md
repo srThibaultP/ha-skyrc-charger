@@ -9,8 +9,10 @@ regardless of which charger you own.
 
 ## Origins / credits
 
-- MC3000 BLE handling: built on the [`skyrc-ble`](https://github.com/jperquin/skyrc-ble)
-  library, same as used in [jperquin/ha-skyrc-mc3000](https://github.com/jperquin/ha-skyrc-mc3000),
+- MC3000 BLE handling: built on the `skyrc-ble` library, installed from
+  [srThibaultP/skyrc-ble](https://github.com/srThibaultP/skyrc-ble), a fork of
+  [jperquin/skyrc-ble](https://github.com/jperquin/skyrc-ble) (PyPI stops at
+  2.1.0, before the version this integration needs). It is the same library as used in [jperquin/ha-skyrc-mc3000](https://github.com/jperquin/ha-skyrc-mc3000),
   whose integration structure (config flow, coordinator, entities, companion
   app mode, voltage curves, program writing) this project was based on and
   keeps tracking.
