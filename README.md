@@ -20,9 +20,19 @@ regardless of which charger you own.
 
 ## Installation
 
+### Marketplace / HACS (recommended)
+
+1. Marketplace (HACS) → ⋮ → **Custom repositories** → paste
+   `https://github.com/srThibaultP/ha-skyrc-charger` → category **Integration**
+2. Install **SkyRC Charger (MC3000 / MC5000)**
+3. Restart Home Assistant
+
+### Manual
+
 Copy `custom_components/skyrc_charger` into your Home Assistant
-`config/custom_components/` folder (or add this repo as a HACS custom
-repository, type "Integration"), then restart Home Assistant.
+`config/custom_components/` folder, then restart Home Assistant.
+
+### Setup
 
 `Settings → Devices & services → Add integration → SkyRC Charger`, choose
 your model (MC3000 or MC5000), then pick or enter the BLE address. The
@@ -134,17 +144,10 @@ current.
 
 ## Icon / logo
 
-`brand_assets/icon.png`, `icon@2x.png` and `logo.png` are included. Home
-Assistant only displays an integration's icon in the "Add integration"
-list/search and config-flow header if it's published in the official
-[home-assistant/brands](https://github.com/home-assistant/brands)
-repository — there's no purely local way to set it for a custom
-integration. To get the icon to show up: fork that repo, add these three
-files under `custom_integrations/skyrc_charger/`, and open a PR (review is
-usually quick for new custom integrations). Until merged, the integration
-shows the generic puzzle-piece icon; this is a Home Assistant limitation,
-not something this component can work around on its own. Entity icons
-(buttons, sensors, etc.) already work normally without this.
+The icon and logo ship in `custom_components/skyrc_charger/brand/`, which
+Home Assistant 2026.3 and later read directly. Older versions show the
+generic puzzle-piece icon. Entity icons (buttons, sensors, etc.) work on any
+version.
 
 ## Known limitations
 
