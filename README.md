@@ -191,3 +191,9 @@ layer for monitoring and start/stop, not a replacement for checking your
 charger's configured battery type, current, and safety cut-offs before
 starting a slot — especially on the MC5000, where Home Assistant is now
 the one constructing the charge profile that gets sent to the device.
+
+## License
+
+MIT for the original work in this repository, see [LICENSE](LICENSE). Code
+inherited from the upstream project, which has no license, is not covered:
+see [NOTICE](NOTICE).

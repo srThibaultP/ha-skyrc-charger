@@ -1,0 +1,16 @@
+SkyRC Charger for Home Assistant
+
+The MIT license in LICENSE covers the original work in this repository by
+Thibault PECH and contributors.
+
+This repository is a fork of jperquin/ha-skyrc-mc3000
+(https://github.com/jperquin/ha-skyrc-mc3000). That project published no
+license, so the parts of the code that come from it remain the property of
+their author, Joost Perquin, and LICENSE does not grant any rights to them.
+
+The MC5000 protocol is reimplemented from the reverse engineering documented
+in rssdev10/skyrc-mc-rs (https://github.com/rssdev10/skyrc-mc-rs), which is
+under the MIT license.
+
+The skyrc-ble library is a separate dependency under the MIT license. See
+https://github.com/srThibaultP/skyrc-ble.
