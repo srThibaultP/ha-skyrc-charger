@@ -172,6 +172,16 @@ def _check_chemistry(hass: HomeAssistant, coordinator, entry_id: str, slot: int)
     return expected
 
 
+def _refuse_running(coordinator, slots) -> None:
+    running = coordinator.running_slots(slots)
+    if running:
+        names = ", ".join(str(slot) for slot in running)
+        raise HomeAssistantError(
+            f"Slot {names} already runs a program; stop it first, the charger would "
+            "ignore a new program"
+        )
+
+
 def _start_kwargs(call: ServiceCall, expected_chemistry: str) -> dict:
     kwargs: dict = {}
 
@@ -289,6 +299,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         charger, coordinator = await connected(call)
 
         await coordinator.async_request_refresh()
+        _refuse_running(coordinator, [slot])
         expected = _check_chemistry(hass, coordinator, entry_id_for(call), slot)
 
         kwargs = _start_kwargs(call, expected)
@@ -312,6 +323,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         entry_id = entry_id_for(call)
 
         await coordinator.async_request_refresh()
+        _refuse_running(coordinator, range(1, coordinator.channel_count + 1))
 
         # Run the same interlock every slot would get individually before
         # arming anything, so a single mismatched cell stops the whole batch.

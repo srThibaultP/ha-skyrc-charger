@@ -206,6 +206,32 @@ class DeviceRefreshTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(charger.devices, [])
 
 
+class RunningSlotsTest(unittest.TestCase):
+    def _coordinator_with(self, statuses) -> SkyrcChargerCoordinator:
+        coordinator = _coordinator(FakeCharger())
+        coordinator.data = {
+            "channels": [models.ChannelData(index=i, status=s) for i, s in enumerate(statuses)]
+        }
+        return coordinator
+
+    def test_slots_with_a_program_running_are_reported(self) -> None:
+        coordinator = self._coordinator_with(["charging", "empty", "resting", "idle"])
+
+        self.assertEqual(coordinator.running_slots([1, 2, 3, 4]), [1, 3])
+        self.assertEqual(coordinator.running_slots([2, 4]), [])
+
+    def test_a_finished_or_failed_slot_is_free_to_start(self) -> None:
+        coordinator = self._coordinator_with(["done", "error", "standby", "discharging"])
+
+        self.assertEqual(coordinator.running_slots([1, 2, 3, 4]), [4])
+
+    def test_no_data_means_nothing_is_running(self) -> None:
+        coordinator = _coordinator(FakeCharger())
+        coordinator.data = None
+
+        self.assertEqual(coordinator.running_slots([1]), [])
+
+
 class FakeEntry:
     def __init__(self, options=None, pref_disable_polling=False) -> None:
         self.options = dict(options or {})
