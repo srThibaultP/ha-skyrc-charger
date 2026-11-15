@@ -45,7 +45,7 @@ MAX_CHANNELS = max(CHANNELS_BY_MODEL.values())
 # used to *suggest* devices in the config flow, never to silently connect to
 # whatever happens to be nearby.
 MC3000_BLE_NAMES = ("SimpleBLEPeripheral", "Charger", "HitecCharger")
-MC3000_BLE_NAME_PATTERNS = tuple(name.lower() for name in MC3000_BLE_NAMES) + ("mc3000", "skyrc")
+MC3000_BLE_NAME_PATTERNS = (*(name.lower() for name in MC3000_BLE_NAMES), "mc3000", "skyrc")
 MC5000_BLE_NAME_PATTERNS = ("mc5000", "skyrc", "#charger", "telinkse", "charger")
 
 # Both chargers speak over the same TelinkSE-style serial service.

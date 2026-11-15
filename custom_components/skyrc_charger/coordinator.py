@@ -14,9 +14,9 @@ from .const import (
     CHANNELS_BY_MODEL,
     DEFAULT_PASSCODE,
     DOMAIN,
-    MODEL_NAMES,
     MODEL_MC3000,
     MODEL_MC5000,
+    MODEL_NAMES,
     OPTION_PASSCODE,
 )
 from .mc3000_client import BLE_NAME_PATTERNS as MC3000_BLE_NAME_PATTERNS, Mc3000Client
@@ -211,7 +211,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
 
         try:
             return await self._find_device_via_bleak_fallback()
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             _LOGGER.debug("SkyRC %s: direct Bleak fallback failed: %r", self.model, err)
             return None
 
@@ -309,7 +309,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
 
         try:
             curve = await charger.async_get_voltage_curve(slot_index)
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             raise UpdateFailed(
                 f"SkyRC {self.model}: voltage curve fetch failed for slot {slot_index + 1}: {err!r}"
             ) from err
@@ -394,7 +394,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
         for slot_index in active_slots:
             try:
                 await self.async_fetch_voltage_curve(slot_index)
-            except Exception as err:  # noqa: BLE001
+            except Exception as err:
                 _LOGGER.debug(
                     "SkyRC %s: auto voltage curve fetch failed for slot %s: %r",
                     self.model,
@@ -443,7 +443,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
 
         try:
             await charger.disconnect()
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             _LOGGER.debug("SkyRC %s: disconnect after failure failed: %r", self.model, err)
 
     def _note_success(self) -> None:
@@ -516,7 +516,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
 
             return data
 
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             await self._async_drop_charger()
             self._note_failure(err)
 
