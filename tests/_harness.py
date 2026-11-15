@@ -1,7 +1,7 @@
 """Import the integration without Home Assistant installed.
 
 The modules under test are pure Python, but they import `homeassistant`,
-`bleak`, `bleak_retry_connector` and `skyrc_ble` at module level. Rather
+`bleak` and `bleak_retry_connector` at module level. Rather
 than pull the whole of Home Assistant into CI, stub those imports with the
 handful of names the integration actually touches, then load the package
 modules straight from disk.
@@ -110,9 +110,6 @@ def _install_stubs() -> None:
     components.bluetooth = bluetooth
     helpers.update_coordinator = update_coordinator
 
-    skyrc_ble = types.ModuleType("skyrc_ble")
-    skyrc_ble.Mc3000 = object
-
     modules = {
         "bleak": bleak,
         "bleak.exc": bleak_exc,
@@ -124,7 +121,6 @@ def _install_stubs() -> None:
         "homeassistant.core": core,
         "homeassistant.helpers": helpers,
         "homeassistant.helpers.update_coordinator": update_coordinator,
-        "skyrc_ble": skyrc_ble,
     }
     sys.modules.update(modules)
 

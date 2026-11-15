@@ -1,6 +1,6 @@
 {
   "domain": "skyrc_charger",
-  "name": "SkyRC Charger (MC3000 / MC5000)",
+  "name": "SkyRC Charger",
   "codeowners": [
     "@srThibaultP"
   ],
@@ -14,8 +14,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/srThibaultP/ha-skyrc-charger/issues",
   "requirements": [
-    "skyrc-ble@https://github.com/jperquin/skyrc-ble/archive/refs/tags/v3.0.0.zip",
     "bleak-retry-connector>=3.4.0"
   ],
-  "version": "1.3.1"
+  "version": "2.0.0"
 }

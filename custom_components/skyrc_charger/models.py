@@ -1,4 +1,4 @@
-"""Common data model shared by the MC3000 and MC5000 drivers.
+"""Common data model of the charger drivers.
 
 Both drivers expose the same shape of data to the coordinator/entities so
 that sensors, buttons, etc. don't need to know which charger they're
@@ -24,7 +24,6 @@ class ChannelData:
     temperature: float | None = None  # celsius
     resistance: float | None = None  # milliohms
     time: int | None = None  # seconds elapsed
-    cycle_count: int | None = None
     led: str | None = None
     error: str | None = None  # MC5000 fault reported for the slot, if any
 
@@ -40,12 +39,6 @@ class DeviceData:
     hw_version: str | None = None
     sw_version: str | None = None
     input_voltage: float | None = None
-    # MC3000-only settings, exposed as diagnostic sensors when present.
-    temperature_unit: str | None = None
-    display_mode: str | None = None
-    cooling_fan_mode: str | None = None
-    system_beep: bool | None = None
-    screensaver: bool | None = None
     # MC5000-only settings.
     beep_volume: str | None = None  # off / low / medium / high
     notification_volume: str | None = None
@@ -67,24 +60,21 @@ class VoltageCurve:
 
     samples_mv: list[int] = field(default_factory=list)
     interval_seconds: int | None = None
-    unknown_3: int | None = None
     checksum_ok: bool | None = None
 
 
 class ChargerClient:
-    """Common interface both drivers must implement.
+    """Common interface the drivers implement.
 
     The coordinator and entity platforms only talk to this interface, so
-    swapping MC3000 <-> MC5000 is just a matter of instantiating a
-    different class in coordinator.py.
+    supporting another charger is a matter of adding a driver and
+    instantiating it in coordinator.py.
     """
 
     channel_count: int = 0
 
     #: Whether the charger can replay a logged voltage curve for a slot.
     supports_voltage_curves: bool = False
-    #: Whether a complete charging program can be written to a slot.
-    supports_programs: bool = False
 
     @property
     def is_connected(self) -> bool:
@@ -117,11 +107,10 @@ class ChargerClient:
     async def start_channel(self, channel: int, **kwargs) -> None:
         """Start charging/discharging on a channel.
 
-        For the MC3000 this starts the program already configured on the
-        device. For the MC5000 the protocol requires a full configuration
-        to be sent first (there is no "use last config" command), so
-        kwargs may carry chemistry/mode/current/capacity overrides; sane
-        defaults are used otherwise.
+        The charger has no "use the last program" command: a full program
+        is written first, which starts the slot. kwargs may carry
+        chemistry/mode/current/capacity overrides; the app's defaults for
+        the chemistry are used otherwise.
         """
         raise NotImplementedError
 
@@ -144,8 +133,4 @@ class ChargerClient:
 
     async def async_get_voltage_curve(self, channel: int) -> VoltageCurve:
         """Read back the logged voltage curve for one slot."""
-        raise NotImplementedError
-
-    async def write_program(self, channel: int, program: dict) -> None:
-        """Write a complete charging program to one slot, without starting it."""
         raise NotImplementedError
