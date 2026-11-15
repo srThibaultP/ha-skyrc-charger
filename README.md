@@ -230,7 +230,7 @@ cd tests && python3 -m unittest discover
 ```
 
 The integration tests run inside a real Home Assistant (`pytest tests_ha`). Both suites together
-cover about 97 % of the integration; the CI fails below 95 %.
+cover 100 % of the integration; the CI fails below 95 %.
 
 ## Safety
 
