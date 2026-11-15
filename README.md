@@ -11,8 +11,8 @@ regardless of which charger you own.
 
 - MC3000 BLE handling: built on the [`skyrc-ble`](https://github.com/jperquin/skyrc-ble)
   library, same as used in [jperquin/ha-skyrc-mc3000](https://github.com/jperquin/ha-skyrc-mc3000),
-  whose integration structure (config flow, coordinator, entities, companion
-  app mode, voltage curves, program writing) this project was based on and
+  whose integration structure (config flow, coordinator, entities,
+  voltage curves, program writing) this project was based on and
   keeps tracking.
 - MC5000 BLE protocol: implemented in pure Python. It started from the
   reverse engineering documented in [rssdev10/skyrc-mc-rs](https://github.com/rssdev10/skyrc-mc-rs)
@@ -41,7 +41,7 @@ your model (MC3000 or MC5000), then pick or enter the BLE address. The
 device list comes from Home Assistant's own Bluetooth manager, so chargers
 seen through an ESPHome or Shelly Bluetooth proxy show up as well.
 
-The **MC5000** has a four digit passcode, shown on its screen (`0000` from
+The **MC5000** has a four digit passcode, shown on its screen (`1234` from
 the factory). Enter it during setup, or later under the integration's
 **Configure** button. With the wrong one the charger still reports its
 status, and a warning in the log says the passcode was refused.
@@ -61,7 +61,7 @@ For each of the four slots:
 `*_cycle_count`, `select.*_expected_chemistry`, `button.*_start`,
 `button.*_stop`.
 
-Device-level: `switch.*_companion_app_mode`, `button.*_refresh`,
+Device-level: `button.*_refresh`,
 `button.*_start_all`, `button.*_stop_all`.
 
 MC3000 only: `sensor.*_input_voltage`, plus the diagnostic
@@ -85,15 +85,13 @@ program runs; an idle slot gives its voltage alone.
 `examples/skyrc-mc3000-dashboard.yaml` is a ready-made Lovelace dashboard
 covering all of it, including charts of the logged voltage curves.
 
-## Companion App Mode
+## Using the SkyRC app alongside
 
-Both chargers only allow one BLE client at a time. Turn on
-`switch.*_companion_app_mode` to have Home Assistant disconnect and pause
-polling so the official SkyRC app can connect; turn it back off when done.
-The switch is remembered across restarts, so it also works to park a charger
-you aren't using. The entry's "Enable polling for changes" system option is
-honoured as well: with it off, the charger is only contacted when you press
-refresh or call a service.
+Both chargers only allow one BLE client at a time. To use the official SkyRC
+app, turn off the entry's "Enable polling for changes" system option
+(Settings → Devices & services → SkyRC Charger → ⋮ → System options), or
+disable the entry. With polling off, Home Assistant only connects when you
+press refresh, start or stop a slot.
 
 ## Services
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -53,13 +52,5 @@ class SkyrcEntity(CoordinatorEntity):
     def available(self) -> bool:
         return self.coordinator.available
 
-    def raise_if_companion_mode(self) -> None:
-        """Block commands while the BLE link is handed over to the app."""
-        if getattr(self.coordinator, "pause_polling", False):
-            raise HomeAssistantError(
-                "SkyRC companion app mode is active; disable it before sending commands."
-            )
-
     async def async_connected_charger(self):
-        self.raise_if_companion_mode()
         return await self.coordinator.async_connected_charger()

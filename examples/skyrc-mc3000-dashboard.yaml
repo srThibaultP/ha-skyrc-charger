@@ -18,8 +18,6 @@ views:
             title: SkyRC MC3000
             show_header_toggle: false
             entities:
-              - entity: switch.skyrc_mc3000_companion_app_mode
-                name: Companion App Mode
               - entity: switch.skyrc_mc3000_auto_fetch_voltage_curves
                 name: Auto Fetch Voltage Curves
               - type: divider

@@ -279,11 +279,6 @@ def _async_register_services(hass: HomeAssistant) -> None:
         coordinator = coordinator_for(call)
         check_slot(coordinator, call.data.get(ATTR_SLOT))
 
-        if coordinator.pause_polling:
-            raise HomeAssistantError(
-                "SkyRC companion app mode is active; disable it before sending commands."
-            )
-
         return await coordinator.async_connected_charger(), coordinator
 
     async def async_handle_refresh(call: ServiceCall) -> None:
@@ -420,8 +415,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _async_register_services(hass)
 
-    # A paused or polling-disabled charger isn't contacted until someone asks
-    # for it (refresh button/service, or turning companion app mode off).
+    # A polling-disabled charger isn't contacted until someone asks
+    # for it (refresh button or service, a start or a stop).
     if not coordinator.polling_disabled:
         entry.async_create_background_task(
             hass, coordinator.async_refresh(), f"{DOMAIN} first refresh"

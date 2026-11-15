@@ -54,8 +54,7 @@ def _coordinator(charger: FakeCharger) -> SkyrcChargerCoordinator:
     coordinator.model = "mc5000"
     coordinator.address = "AA:BB:CC:DD:EE:FF"
     coordinator.channel_count = 4
-    coordinator.pause_polling = False
-    coordinator.passcode = "0000"
+    coordinator.passcode = "1234"
     coordinator.charger = charger
     coordinator.data = None
     coordinator.last_update_success = True
@@ -228,16 +227,7 @@ def _real_coordinator(entry) -> SkyrcChargerCoordinator:
     )
 
 
-class PausedPollingTest(unittest.IsolatedAsyncioTestCase):
-    """A charger the user switched off must stay off, restart included."""
-
-    def test_companion_app_mode_survives_a_restart(self) -> None:
-        coordinator = _real_coordinator(FakeEntry({"companion_app_mode": True}))
-
-        self.assertTrue(coordinator.pause_polling)
-        self.assertIsNone(coordinator.update_interval)
-        self.assertTrue(coordinator.polling_disabled)
-
+class PollingTest(unittest.TestCase):
     def test_polls_by_default(self) -> None:
         coordinator = _real_coordinator(FakeEntry())
 
@@ -249,17 +239,13 @@ class PausedPollingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(coordinator.polling_disabled)
 
-    async def test_switching_companion_app_mode_is_persisted(self) -> None:
-        entry = FakeEntry()
-        coordinator = _real_coordinator(entry)
+    def test_default_passcode_is_the_factory_one(self) -> None:
+        self.assertEqual(_real_coordinator(FakeEntry()).passcode, "1234")
 
-        await coordinator.async_enable_companion_app_mode()
-        self.assertEqual(entry.options, {"companion_app_mode": True})
-        self.assertIsNone(coordinator.update_interval)
+    def test_passcode_comes_from_the_options(self) -> None:
+        coordinator = _real_coordinator(FakeEntry({"passcode": "9081"}))
 
-        await coordinator.async_disable_companion_app_mode()
-        self.assertEqual(entry.options, {"companion_app_mode": False})
-        self.assertEqual(coordinator.update_interval, coordinator_module.UPDATE_INTERVAL)
+        self.assertEqual(coordinator.passcode, "9081")
 
 
 if __name__ == "__main__":

@@ -69,7 +69,6 @@ class SkyrcStartAllButton(SkyrcBaseButton):
         self._attr_unique_id = f"{entry_id}_start_all"
 
     async def async_press(self) -> None:
-        self.raise_if_companion_mode()
         await self.hass.services.async_call(
             DOMAIN,
             "start_all",
@@ -92,7 +91,6 @@ class SkyrcStartSlotButton(SkyrcBaseButton):
         # Go through the service so the button gets the same chemistry
         # interlock (and, on the MC5000, the same program defaults) as a
         # scripted start.
-        self.raise_if_companion_mode()
         await self.hass.services.async_call(
             DOMAIN,
             "start_slot",
@@ -128,5 +126,4 @@ class SkyrcFetchVoltageCurveButton(SkyrcBaseButton):
         self._attr_unique_id = f"{entry_id}_slot_{self.slot}_fetch_voltage_curve"
 
     async def async_press(self) -> None:
-        self.raise_if_companion_mode()
         await self.coordinator.async_fetch_voltage_curve(self.slot_index)
