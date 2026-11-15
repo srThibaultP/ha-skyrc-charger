@@ -34,6 +34,36 @@ PARALLEL_UPDATES = 0
 NO_SLOT_READINGS = frozenset({MODEL_PSU650})
 
 
+# What an error means, in the words of the SkyRC app where it has some, and
+# what usually causes it. The state of the sensor stays the short key.
+ERROR_DESCRIPTIONS: dict[str, str] = {
+    "input_voltage_low": "Input voltage too low: check the power supply of the charger.",
+    "input_voltage_high": "Input voltage too high: check the power supply of the charger.",
+    "battery_disconnected": (
+        "Connection break: the charger lost contact with the cell. Reseat the cell, "
+        "check that it touches both contacts and that they are clean."
+    ),
+    "capacity_limit": "Capacity limit reached: the program stopped at its capacity cut-off.",
+    "time_limit": "Time limit reached: the program stopped at its time cut-off.",
+    "internal_temperature_high": "The charger is too hot: let it cool down and check its ventilation.",
+    "check_failed": "Check failed: the charger could not validate the cell.",
+    "resistance_too_high": "High internal resistance: the cell is worn, or its contact is poor.",
+    "wrong_battery_type": "The cell is not of the chemistry of the program.",
+    "overload": "Overload protection: the output asked for more than the charger can give.",
+    "reversed_polarity": "Reversed polarity: the cell is inserted the wrong way round.",
+    "battery_full": "The cell is already full.",
+    "short_circuit": "Short circuit on the slot.",
+    "battery_temperature_limit": "The cell reached the temperature cut-off.",
+}
+
+
+def _error_attributes(slot: ChannelData) -> dict[str, object]:
+    if not slot.error:
+        return {}
+    description = ERROR_DESCRIPTIONS.get(slot.error)
+    return {"description": description} if description else {}
+
+
 def _format_seconds(value: int | None) -> str | None:
     if value is None or value < 0:
         return None
@@ -49,6 +79,8 @@ class SlotSensorDescription(SensorEntityDescription):
     models: frozenset[str] = frozenset()
     #: Models that do not.
     exclude: frozenset[str] = frozenset()
+    #: Extra attributes of the sensor, if any.
+    attributes_fn: Callable[[ChannelData], dict[str, object]] | None = None
 
 
 SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
@@ -150,6 +182,7 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         translation_key="error",
         exclude=NO_SLOT_READINGS,
         icon="mdi:alert-circle-outline",
+        attributes_fn=_error_attributes,
         value_fn=lambda slot: slot.error or "none",
     ),
 )
@@ -248,6 +281,14 @@ class SlotSensor(SkyrcEntity, SensorEntity):
         if data is None or self._index >= len(data.channels):
             return None
         return self.entity_description.value_fn(data.channels[self._index])
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object] | None:
+        data = self.coordinator.data
+        fn = self.entity_description.attributes_fn
+        if fn is None or data is None or self._index >= len(data.channels):
+            return None
+        return fn(data.channels[self._index])
 
 
 class CurveSensor(SkyrcEntity, SensorEntity):
