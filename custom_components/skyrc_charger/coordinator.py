@@ -16,7 +16,6 @@ from .const import (
     MODEL_NAMES,
     MODEL_MC3000,
     MODEL_MC5000,
-    OPTION_COMPANION_APP_MODE,
     OPTION_PASSCODE,
 )
 from .mc3000_client import BLE_NAME_PATTERNS as MC3000_BLE_NAME_PATTERNS, Mc3000Client
@@ -100,9 +99,6 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
             self.passcode = config_entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE)
         self._last_device = None
         self._last_good_data = None
-        self.pause_polling = False
-        if config_entry is not None and config_entry.options.get(OPTION_COMPANION_APP_MODE):
-            self._set_paused(True)
 
         # Noise control: these chargers drop their link constantly and every
         # drop is recovered on the next poll. Log the transition into and out
@@ -219,9 +215,6 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
             return None
 
     async def _ensure_charger(self) -> ChargerClient:
-        if self.pause_polling:
-            raise UpdateFailed(f"SkyRC {self.model} polling paused for companion app mode")
-
         if self.charger is not None and self.charger.is_connected:
             return self.charger
 
@@ -250,61 +243,16 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
 
         return charger
 
-    # ------------------------------------------------------------------
-    # Companion app mode
-    # ------------------------------------------------------------------
-
     @property
     def polling_disabled(self) -> bool:
-        """Whether nothing should talk to the charger on a schedule."""
-        entry = self.config_entry
-        return self.pause_polling or bool(entry is not None and entry.pref_disable_polling)
+        """Whether the entry's "polling" system option is turned off.
 
-    def _set_paused(self, paused: bool) -> None:
-        """Pause or resume the schedule, not just the BLE work.
-
-        With no update interval the base class stops rescheduling refreshes,
-        so a paused charger costs nothing instead of a no-op poll every ten
-        seconds.
+        That option is how to hand the charger over to the SkyRC app: it
+        takes one BLE client at a time, and with polling off Home Assistant
+        only connects when asked to (refresh, start, stop).
         """
-        self.pause_polling = paused
-        self.update_interval = None if paused else UPDATE_INTERVAL
-
-    def _persist_companion_app_mode(self) -> None:
-        """Remember the switch, or a restart would silently resume polling."""
         entry = self.config_entry
-        if entry is None:
-            return
-        if bool(entry.options.get(OPTION_COMPANION_APP_MODE)) == self.pause_polling:
-            return
-        self.hass.config_entries.async_update_entry(
-            entry,
-            options={**entry.options, OPTION_COMPANION_APP_MODE: self.pause_polling},
-        )
-
-    async def async_enable_companion_app_mode(self) -> None:
-        _LOGGER.info("SkyRC %s: enabling companion app mode", self.model)
-        self._set_paused(True)
-        self._persist_companion_app_mode()
-
-        if self.charger is not None:
-            try:
-                if self.charger.is_connected:
-                    await self.charger.disconnect()
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.warning("SkyRC %s: disconnect failed: %r", self.model, err)
-
-        self.charger = None
-        self._last_device = None
-        self.async_update_listeners()
-
-    async def async_disable_companion_app_mode(self) -> None:
-        _LOGGER.info("SkyRC %s: disabling companion app mode", self.model)
-        self._set_paused(False)
-        self._persist_companion_app_mode()
-        self.charger = None
-        self._last_device = None
-        await self.async_request_refresh()
+        return bool(entry is not None and entry.pref_disable_polling)
 
     # ------------------------------------------------------------------
     # Voltage curves (MC3000)
@@ -355,9 +303,6 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
 
         if not self.supports_voltage_curves:
             raise UpdateFailed(f"SkyRC {self.model} does not expose voltage curves")
-
-        if self.pause_polling:
-            raise UpdateFailed(f"SkyRC {self.model} polling paused for companion app mode")
 
         charger = await self.async_connected_charger()
 
@@ -415,7 +360,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
 
     async def async_auto_fetch_voltage_curves(self, force: bool = False) -> None:
         """Fetch curves for the slots that are currently working, throttled."""
-        if not self.auto_fetch_voltage_curves or self.pause_polling:
+        if not self.auto_fetch_voltage_curves:
             return
 
         now = time.monotonic()
@@ -496,8 +441,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
             )
         self._consecutive_failures = 0
         self._last_failure_repr = None
-        if not self.pause_polling:
-            self.update_interval = UPDATE_INTERVAL
+        self.update_interval = UPDATE_INTERVAL
 
     def _backoff_interval(self) -> timedelta:
         excess = self._consecutive_failures - STALE_AFTER_FAILURES
@@ -512,8 +456,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
         failure_repr = repr(err)
 
         interval = self._backoff_interval()
-        if not self.pause_polling:
-            self.update_interval = interval
+        self.update_interval = interval
 
         now = time.monotonic()
         first = self._consecutive_failures == 1
@@ -540,11 +483,6 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
         self._last_failure_repr = failure_repr
 
     async def _async_update_data(self):
-        if self.pause_polling:
-            if self._last_good_data is not None:
-                return self._last_good_data
-            raise UpdateFailed(f"SkyRC {self.model} polling paused for companion app mode")
-
         try:
             charger = await self._ensure_charger()
 

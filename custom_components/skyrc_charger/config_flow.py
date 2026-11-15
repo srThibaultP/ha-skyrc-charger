@@ -154,7 +154,6 @@ class SkyrcChargerOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             passcode = str(user_input[OPTION_PASSCODE]).strip()
             if _valid_passcode(passcode):
-                # Keep the other options (companion app mode) as they are.
                 return self.async_create_entry(
                     data={**self.config_entry.options, OPTION_PASSCODE: passcode}
                 )
