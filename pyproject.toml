@@ -1,0 +1,16 @@
+[tool.coverage.run]
+source = ["custom_components/skyrc_charger"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# Pyflakes and pycodestyle for now. Widen to the rules of the other
+# integrations (import order, pyupgrade, bugbear...) together with a
+# ruff format pass, once the open pull requests are merged.
+select = ["E", "F"]
+ignore = ["E501"]
