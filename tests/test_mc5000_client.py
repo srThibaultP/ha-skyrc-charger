@@ -395,5 +395,59 @@ class StartStopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp, status)
 
 
+# A real three-page answer to 0x98 for slot 1, 38 minutes into a NiMH charge.
+CURVE_PAGES = [
+    bytes.fromhex("0fce9801030108d804d804d804d904db04db04de04e004e004e204e204e304e404e404e604e704e704e904e904eb04ec04ec04ee04ee04ee04f004f004f204f304f304f504f504f504f504f504f704f804f804fa04fa04fa04fb04fb04fc04fc04fd04ff04ff04ff04ff04ff040105010501050105010503050405040505050505050506050605080508050805090509050a050a050a050b050b050b050c050c050d050d050d050d050d050f05100510051005100510051205120512051205120513051305130515051505150515050c"),
+    bytes.fromhex("0fce9801030208150517051705170517051705180518051805190519051905190519051a051a051a051c051c051c051c051c051c051c051d051e051e051e051e051e051f051f0520052105210521052105210521052105220523052305230523052305230523052505250525052505250525052505250525052505260527052705280528052805280528052905290529052a052a052a052a052a052a052a052a052b052b052c052d052d052d052d052d052d052d052e052e052e052f052f052f052f052f052f052f052f0530053005a0"),
+    bytes.fromhex("0fb69801030308310531053105310531053105310531053205320532053305340534053405340534053405340534053405350536053605360536053605360536053605360536053705370538053805380539053905390539053905390539053905390539053a053a053a053b053b053b053b053b053b053b053b053b053b053c053d053d053e053e053e053e053e053e053e053e053e053e053e053f053f05400540054005400540054005400540054005400540054005ff"),
+]
+
+
+class VoltageCurveTest(unittest.IsolatedAsyncioTestCase):
+    def test_a_captured_page_is_split_into_samples(self) -> None:
+        total, number, interval, samples, ok = Mc5000Client._parse_curve_page(CURVE_PAGES[2])
+
+        self.assertEqual((total, number, interval), (3, 3, 8))
+        self.assertEqual(len(samples), 88)
+        self.assertEqual(samples[0], 1329)
+        self.assertEqual(samples[-1], 1344)
+        self.assertTrue(ok)
+
+    async def test_every_page_is_collected(self) -> None:
+        client = _client()
+        await _connect(client)
+        client._client.writes.clear()
+
+        async def feed():
+            while not client._client.writes:
+                await asyncio.sleep(0)
+            for page in CURVE_PAGES:
+                client._notify_queue.put_nowait(page)
+
+        task = asyncio.create_task(feed())
+        try:
+            curve = await client.async_get_voltage_curve(0)
+        finally:
+            task.cancel()
+
+        self.assertEqual(client._client.writes, [bytes.fromhex("0f03980199")])
+        self.assertEqual(len(curve.samples_mv), 288)
+        self.assertEqual(curve.samples_mv[0], 1240)
+        self.assertEqual(curve.samples_mv[-1], 1344)
+        self.assertEqual(curve.interval_seconds, 8)
+        self.assertTrue(curve.checksum_ok)
+
+    def test_frames_split_by_a_small_mtu_are_reassembled(self) -> None:
+        client = _client()
+        stream = bytes.fromhex("0f0406010108") + CURVE_PAGES[2]
+
+        for start in range(0, len(stream), 20):
+            client._notify_handler(None, bytearray(stream[start : start + 20]))
+
+        self.assertEqual(client._notify_queue.get_nowait(), bytes.fromhex("0f0406010108"))
+        self.assertEqual(client._notify_queue.get_nowait(), CURVE_PAGES[2])
+        self.assertTrue(client._notify_queue.empty())
+
+
 if __name__ == "__main__":
     unittest.main()

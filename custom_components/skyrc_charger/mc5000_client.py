@@ -15,6 +15,7 @@ Commands used here:
     0x91  slot status, one slot per request (slot bitmask)
     0x94  write a slot program; the charger starts it right away
     0x96  read the system settings (beeps, backlight, sleep timer)
+    0x98  read a slot's logged voltage curve, sent back in several pages
     0xFE  stop the slots in the given bitmask
 
 An earlier community write-up treated 0x93 as start/stop. In the app 0x93
@@ -37,7 +38,7 @@ from .const import (
     DEFAULT_PASSCODE,
     MC5000_BLE_NAME_PATTERNS,
 )
-from .models import ChannelData, ChargerClient, ChargerState, DeviceData
+from .models import ChannelData, ChargerClient, ChargerState, DeviceData, VoltageCurve
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ CMD_STATUS = 0x91
 CMD_QUERY_SLOT_SETTINGS = 0x93
 CMD_CONFIG = 0x94
 CMD_QUERY_SYSTEM = 0x96
+CMD_VOLTAGE_CURVE = 0x98
 CMD_STOP = 0xFE
 
 # Model code the app matches the 0x57 answer against ("100214" in ASCII).
@@ -202,11 +204,13 @@ def _u16(value: int) -> bytes:
 
 class Mc5000Client(ChargerClient):
     channel_count = 4
+    supports_voltage_curves = True
 
     def __init__(self, ble_device) -> None:
         self._device = ble_device
         self._client: BleakClient | None = None
         self._notify_queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self._rx_buffer = bytearray()
         self._device_info = DeviceData(name="SkyRC MC5000", model="MC5000")
         self._connect_lock = asyncio.Lock()
         self._connected = False
@@ -252,7 +256,26 @@ class Mc5000Client(ChargerClient):
         self.unlocked = unlocked
 
     def _notify_handler(self, _characteristic, data: bytearray) -> None:
-        self._notify_queue.put_nowait(bytes(data))
+        """Reassemble frames before queueing them.
+
+        Voltage curve pages are up to 208 bytes. Over a link that kept the
+        default MTU they arrive in pieces, so a notification is not always
+        a whole frame: cut the stream on the length byte instead.
+        """
+        buffer = self._rx_buffer
+        buffer.extend(data)
+        while buffer:
+            if buffer[0] != START_BYTE:
+                start = buffer.find(bytes([START_BYTE]))
+                if start < 0:
+                    buffer.clear()
+                    return
+                del buffer[:start]
+            if len(buffer) < 2 or len(buffer) < buffer[1] + 2:
+                return
+            size = buffer[1] + 2
+            self._notify_queue.put_nowait(bytes(buffer[:size]))
+            del buffer[:size]
 
     def _disconnected_callback(self, _client: BleakClient) -> None:
         """Mark the link as down so the next poll reconnects.
@@ -281,6 +304,7 @@ class Mc5000Client(ChargerClient):
             # dropped link would otherwise be read as answers to the first
             # commands of the new one.
             self._notify_queue = asyncio.Queue()
+            self._rx_buffer = bytearray()
 
             client = await establish_connection(
                 client_class=BleakClient,
@@ -547,6 +571,53 @@ class Mc5000Client(ChargerClient):
             channels.append(self._parse_channel(index, resp))
 
         return ChargerState(device=self._device_info, channels=channels)
+
+    @staticmethod
+    def _parse_curve_page(page: bytes) -> tuple[int, int, int, list[int], bool]:
+        """Split one 0x98 page into (total, page, interval, samples, checksum_ok).
+
+        Layout: 0x0F len 0x98 slot total page interval, then 16-bit
+        little-endian millivolt samples, then the checksum.
+        """
+        total, number, interval = page[4], page[5], page[6]
+        samples = [
+            int.from_bytes(page[offset : offset + 2], "little")
+            for offset in range(7, len(page) - 2, 2)
+        ]
+        checksum_ok = (sum(page[2:-1]) & 0xFF) == page[-1]
+        return total, number, interval, samples, checksum_ok
+
+    async def async_get_voltage_curve(self, channel: int) -> VoltageCurve:
+        """Read back the slot's logged voltage curve, every page of it.
+
+        The charger answers one request with all the pages in a row, one
+        sample every `interval` seconds since the program started.
+        """
+        bitmask = CHANNEL_BITMASK[channel]
+        page = await self._request(CMD_VOLTAGE_CURVE, bytes([bitmask]))
+        samples: list[int] = []
+        interval = None
+        checksum_ok = True
+
+        while page is not None and len(page) >= 8 and page[2] == CMD_VOLTAGE_CURVE:
+            if page[3] != bitmask:
+                break
+            total, number, interval, page_samples, page_ok = self._parse_curve_page(page)
+            samples.extend(page_samples)
+            checksum_ok = checksum_ok and page_ok
+            if number >= total:
+                break
+            try:
+                page = await asyncio.wait_for(self._notify_queue.get(), timeout=NOTIFY_TIMEOUT)
+            except asyncio.TimeoutError:
+                checksum_ok = False
+                break
+
+        return VoltageCurve(
+            samples_mv=samples,
+            interval_seconds=interval,
+            checksum_ok=checksum_ok if samples else None,
+        )
 
     def _build_config_payload(self, channel: int, **kwargs) -> bytes:
         # No default: guessing lithium for a NiMH cell would charge it to
