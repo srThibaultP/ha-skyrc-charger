@@ -127,9 +127,11 @@ class QuietRecoveryTest(unittest.IsolatedAsyncioTestCase):
         coordinator = _coordinator(charger)
         coordinator._last_good_data = None
 
-        with self.assertLogs(LOGGER_NAME, level=logging.DEBUG):
-            with self.assertRaises(UpdateFailed):
-                await coordinator._async_update_data()
+        with (
+            self.assertLogs(LOGGER_NAME, level=logging.DEBUG),
+            self.assertRaises(UpdateFailed),
+        ):
+            await coordinator._async_update_data()
 
     async def test_entities_go_unavailable_once_the_data_is_stale(self) -> None:
         charger = FakeCharger()
@@ -204,7 +206,6 @@ class DeviceRefreshTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(charger.devices, [])
 
 
-
 class FakeEntry:
     def __init__(self, options=None, pref_disable_polling=False) -> None:
         self.options = dict(options or {})
@@ -222,9 +223,7 @@ class FakeHass:
 
 
 def _real_coordinator(entry) -> SkyrcChargerCoordinator:
-    return SkyrcChargerCoordinator(
-        FakeHass(), "AA:BB:CC:DD:EE:FF", "mc5000", config_entry=entry
-    )
+    return SkyrcChargerCoordinator(FakeHass(), "AA:BB:CC:DD:EE:FF", "mc5000", config_entry=entry)
 
 
 class PollingTest(unittest.TestCase):

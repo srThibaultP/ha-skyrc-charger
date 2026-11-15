@@ -217,7 +217,9 @@ class Mc3000Client(ChargerClient):
         frame = raw[:VOLTAGE_CURVE_FRAME_SIZE]
 
         if frame[0] != 0x0F:
-            raise ValueError(f"Voltage curve frame does not start with magic byte: 0x{frame[0]:02x}")
+            raise ValueError(
+                f"Voltage curve frame does not start with magic byte: 0x{frame[0]:02x}"
+            )
 
         if frame[1] != CMD_GET_VOLTAGE_CURVE:
             raise ValueError(f"Unexpected voltage curve command byte: 0x{frame[1]:02x}")
@@ -238,7 +240,7 @@ class Mc3000Client(ChargerClient):
 
         return VoltageCurve(
             samples_mv=[
-                int.from_bytes(sample_bytes[i:i + 2], "big")
+                int.from_bytes(sample_bytes[i : i + 2], "big")
                 for i in range(0, len(sample_bytes), 2)
             ],
             interval_seconds=frame[4],

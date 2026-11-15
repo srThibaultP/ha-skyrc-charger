@@ -33,9 +33,7 @@ class RecoverableSkyrcBleLogFilterTest(unittest.TestCase):
         # Emitted once per poll for as long as the charger is switched off,
         # and recovered by itself the moment it comes back. The coordinator
         # reports the outage once, so the library's copy is noise.
-        record = _record(
-            "skyrc_ble.device", "%s: Failed to connect to address %s", logging.ERROR
-        )
+        record = _record("skyrc_ble.device", "%s: Failed to connect to address %s", logging.ERROR)
 
         self.assertTrue(RecoverableSkyrcBleLogFilter().filter(record))
         self.assertEqual(record.levelno, logging.DEBUG)

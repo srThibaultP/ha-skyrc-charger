@@ -26,9 +26,7 @@ class UpdateFailed(Exception):
 class DataUpdateCoordinator:
     """Minimal base class, enough to instantiate the coordinator."""
 
-    def __init__(
-        self, hass, logger, config_entry=None, name=None, update_interval=None
-    ) -> None:
+    def __init__(self, hass, logger, config_entry=None, name=None, update_interval=None) -> None:
         self.hass = hass
         self.logger = logger
         self.config_entry = config_entry
