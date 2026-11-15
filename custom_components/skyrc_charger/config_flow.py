@@ -30,7 +30,9 @@ from .const import (
     MODEL_BY_CODE,
     MODEL_MC3000,
     MODEL_NAMES,
+    MODEL_NC2600,
     MODEL_PSU650,
+    NC2600_CODES,
     OPTION_PASSCODE,
     PSU650_NAME_FRAGMENT,
     default_passcode,
@@ -93,7 +95,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
                 try:
                     await old.connect(probe=True)
                     if old.identified:
-                        model = MODEL_MC3000
+                        model = MODEL_NC2600 if old.model_code in NC2600_CODES else MODEL_MC3000
                     await old.disconnect()
                 except (BleakError, TimeoutError, OSError) as err:
                     _LOGGER.debug("Could not connect to %s: %r", address, err)

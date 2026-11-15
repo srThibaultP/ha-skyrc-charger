@@ -1330,6 +1330,55 @@ class Mc3000Test(unittest.IsolatedAsyncioTestCase):
             await client.start_channel(0)
 
 
+nc2600 = load("nc2600_client")
+Nc2600Client = nc2600.Nc2600Client
+
+
+def _nc2600_status(mode: int = 0, state: int = 1, **fields) -> bytes:
+    packet = bytearray(20)
+    packet[0], packet[1], packet[2] = 0x0F, 0x55, fields.get("slot", 0)
+    packet[3], packet[4] = mode | (1 << 6), state
+    packet[5:7] = fields.get("mah", 400).to_bytes(2, "big")
+    packet[7:9] = fields.get("mv", 1310).to_bytes(2, "big")
+    packet[9:11] = fields.get("ma", 500).to_bytes(2, "big")
+    packet[11:13] = fields.get("seconds", 900).to_bytes(2, "big")
+    packet[13], packet[14] = fields.get("temp", 27), 3
+    packet[15:17] = fields.get("mohm", 45).to_bytes(2, "big")
+    packet[19] = sum(packet[:19]) & 0xFF
+    return bytes(packet)
+
+
+class Nc2600Test(unittest.IsolatedAsyncioTestCase):
+    def test_a_charging_slot(self) -> None:
+        slot = Nc2600Client(FakeDevice())._parse_slot(0, _nc2600_status())
+
+        self.assertEqual(
+            (slot.status, slot.mode, slot.voltage, slot.current), ("charging", "charge", 1.31, 0.5)
+        )
+        self.assertEqual(
+            (slot.capacity, slot.time, slot.temperature, slot.resistance), (400, 900, 27.0, 45.0)
+        )
+
+    def test_the_mode_ignores_the_cell_type_bits(self) -> None:
+        slot = Nc2600Client(FakeDevice())._parse_slot(0, _nc2600_status(mode=3, state=2))
+
+        self.assertEqual((slot.status, slot.mode), ("discharging", "discharge"))
+
+    def test_an_empty_slot(self) -> None:
+        slot = Nc2600Client(FakeDevice())._parse_slot(0, _nc2600_status(state=0, mv=0, ma=0))
+
+        self.assertEqual((slot.status, slot.voltage, slot.mode), ("empty", 0.0, None))
+
+    def test_an_error_slot(self) -> None:
+        slot = Nc2600Client(FakeDevice())._parse_slot(0, _nc2600_status(state=5))
+
+        self.assertEqual((slot.status, slot.error), ("error", "device_error"))
+
+    async def test_there_is_no_stop(self) -> None:
+        with self.assertRaises(ValueError):
+            await Nc2600Client(FakeDevice()).stop_channel(0)
+
+
 def _harness_client():
     return FakeBleakClient()
 

@@ -30,6 +30,7 @@ from .const import (
     MODEL_MC3000,
     MODEL_MC5000,
     MODEL_NC2200,
+    MODEL_NC2600,
     MODEL_NC3000,
     MODEL_PSU650,
     MODEL_TYPE228,
@@ -44,6 +45,7 @@ from .mc3000_client import Mc3000Client
 from .mc5000_client import Mc5000Client
 from .models import ChargerClient, ChargerState
 from .nc2200_client import Nc2200Client
+from .nc2600_client import Nc2600Client
 from .nc3000_client import Nc3000Client
 from .psu650_client import Psu650Client
 from .type228_client import Type228Client
@@ -57,6 +59,7 @@ CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
     MODEL_MC3000: Mc3000Client,
     MODEL_MC5000: Mc5000Client,
     MODEL_NC2200: Nc2200Client,
+    MODEL_NC2600: Nc2600Client,
     MODEL_NC3000: Nc3000Client,
     MODEL_PSU650: Psu650Client,
     MODEL_TYPE228: Type228Client,

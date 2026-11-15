@@ -20,6 +20,7 @@ MODEL_BD380 = "bd380"
 MODEL_MC5000 = "mc5000"
 MODEL_MC3000 = "mc3000"
 MODEL_NC2200 = "nc2200"
+MODEL_NC2600 = "nc2600"
 MODEL_PSU650 = "psu650"
 MODEL_NC3000 = "nc3000"
 MODEL_TYPE228 = "type228"
@@ -62,6 +63,7 @@ MODELS = {
     MODEL_MC3000: "SkyRC MC3000 (4 slots)",
     MODEL_MC5000: "SkyRC MC5000 (4 slots)",
     MODEL_NC2200: "SkyRC NC2200 (4 slots)",
+    MODEL_NC2600: "SkyRC NC2600 (4 slots)",
     MODEL_PSU650: "SkyRC PSU650 (power supply)",
     MODEL_NC3000: "SkyRC NC3000 (4 slots)",
     MODEL_TYPE228: "SkyRC NC3000 Octa (8 slots)",
@@ -86,6 +88,7 @@ MODEL_NAMES = {
     MODEL_MC3000: "SkyRC MC3000",
     MODEL_MC5000: "SkyRC MC5000",
     MODEL_NC2200: "SkyRC NC2200",
+    MODEL_NC2600: "SkyRC NC2600",
     MODEL_PSU650: "SkyRC PSU650",
     MODEL_NC3000: "SkyRC NC3000",
     MODEL_TYPE228: "SkyRC NC3000 Octa",
@@ -97,6 +100,7 @@ CHANNELS_BY_MODEL = {
     MODEL_MC3000: 4,
     MODEL_MC5000: 4,
     MODEL_NC2200: 4,
+    MODEL_NC2600: 4,
     MODEL_PSU650: 4,
     MODEL_NC3000: 4,
     MODEL_TYPE228: 8,
@@ -106,8 +110,9 @@ CHANNELS_BY_MODEL = {
 # error codes and a chemistry. The others are monitored and stopped only.
 MODELS_WITH_START = {MODEL_MC5000}
 
-# Models with a stop command (a power supply has nothing to stop).
-MODELS_WITHOUT_STOP = {MODEL_PSU650}
+# Models without a stop command: a power supply has nothing to stop, and
+# the NC2600 app stops a slot by sending a program, which is not offered.
+MODELS_WITHOUT_STOP = {MODEL_PSU650, MODEL_NC2600}
 
 # Models that can give a slot's logged voltage curve.
 MODELS_WITH_CURVE = {MODEL_MC3000, MODEL_MC5000, MODEL_NC3000, MODEL_TYPE228}
@@ -119,6 +124,10 @@ MAX_CHANNELS = max(CHANNELS_BY_MODEL.values())
 # they are only used to *suggest* devices in the config flow, never to
 # silently connect to whatever happens to be nearby.
 MC5000_BLE_NAME_PATTERNS = ("mc5000", "skyrc", "#charger", "telinkse", "charger", "psu650")
+
+# What the NC2600 gives in the info answer (the app tells its two
+# variants apart by it); the MC3000 gives none.
+NC2600_CODES = ("100113", "100145")
 
 # The MC3000 gives no model code: the app tells it by its own protocol.
 
