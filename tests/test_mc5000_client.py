@@ -1005,5 +1005,109 @@ class LegacyTest(unittest.IsolatedAsyncioTestCase):
             await client.start_channel(0)
 
 
+bd380 = load("bd380_client")
+Bd380Client = bd380.Bd380Client
+
+
+def _bd380_status(status: int, mode: int = 0, **fields) -> bytes:
+    packet = bytearray(36)
+    packet[0:3] = b"\x0f\x22\x71"
+    packet[4] = status
+    packet[5] = mode
+    packet[15:17] = fields.get("voltage", 0).to_bytes(2, "big")
+    packet[17:19] = fields.get("current", 0).to_bytes(2, "big")
+    packet[19:21] = fields.get("power", 0).to_bytes(2, "big")
+    packet[21:25] = fields.get("elapsed", 0).to_bytes(4, "big")
+    packet[25] = fields.get("ext_temp", 0)
+    packet[26] = fields.get("int_temp", 0)
+    packet[27:29] = fields.get("energy", 0).to_bytes(2, "big")
+    packet[29:33] = fields.get("capacity", 0).to_bytes(4, "big")
+    packet[35] = sum(packet[2:35]) & 0xFF
+    return bytes(packet)
+
+
+class Bd380Test(unittest.IsolatedAsyncioTestCase):
+    def test_a_working_discharge(self) -> None:
+        channel = Bd380Client._parse_status(
+            _bd380_status(
+                1,
+                mode=1,
+                voltage=1234,
+                current=250,
+                power=315,
+                elapsed=3725,
+                int_temp=38,
+                energy=42,
+                capacity=1200,
+            )
+        )
+
+        self.assertEqual((channel.status, channel.mode), ("working", "constant_voltage"))
+        self.assertEqual((channel.voltage, channel.current, channel.power), (12.34, 2.5, 31.5))
+        self.assertEqual((channel.time, channel.temperature), (3725, 38.0))
+        self.assertEqual((channel.energy, channel.capacity), (4.2, 1200))
+
+    def test_the_other_states(self) -> None:
+        names = {2: "standby", 3: "done", 5: "ready"}
+        for byte, name in names.items():
+            channel = Bd380Client._parse_status(_bd380_status(byte, voltage=500))
+            self.assertEqual(channel.status, name, byte)
+
+    def test_an_error_carries_both_codes(self) -> None:
+        packet = bytearray(_bd380_status(4))
+        packet[15], packet[16] = 7, 2
+
+        channel = Bd380Client._parse_status(bytes(packet))
+
+        self.assertEqual((channel.status, channel.error), ("error", "system_7_charge_2"))
+
+    async def test_the_handshake_sends_the_password_and_nothing_else(self) -> None:
+        client = Bd380Client(FakeDevice())
+        client.set_passcode("5793")
+        await _connect(client)
+        client._client.writes.clear()
+
+        async def feed():
+            for _ in range(4000):
+                await asyncio.sleep(0)
+                if client._client.writes and client._notify_queue.empty():
+                    client._notify_queue.put_nowait(bytes.fromhex("0f0474010176"))
+
+        task = asyncio.create_task(feed())
+        try:
+            await client._async_handshake()
+        finally:
+            task.cancel()
+
+        commands = [write[2] for write in client._client.writes]
+        self.assertEqual(set(commands), {mc5000.CMD_INFO, mc5000.CMD_VERIFY_PASSWORD})
+        self.assertEqual(commands[-1], mc5000.CMD_VERIFY_PASSWORD)
+        self.assertEqual(bytes(client._client.writes[-1][3:8]), bytes([0, 5, 7, 9, 3]))
+        self.assertTrue(client.unlocked)
+
+    async def test_the_status_request_and_a_refused_start(self) -> None:
+        client = Bd380Client(FakeDevice())
+        await _connect(client)
+        client._client.writes.clear()
+
+        async def feed():
+            for _ in range(2000):
+                await asyncio.sleep(0)
+                if client._client.writes and client._notify_queue.empty():
+                    client._notify_queue.put_nowait(_bd380_status(2, voltage=1200))
+                    return
+
+        task = asyncio.create_task(feed())
+        try:
+            state = await client.async_update()
+        finally:
+            task.cancel()
+
+        self.assertEqual(client._client.writes, [bytes.fromhex("0f0471000071")])
+        self.assertEqual(len(state.channels), 1)
+        with self.assertRaises(ValueError):
+            await client.start_channel(0)
+
+
 if __name__ == "__main__":
     unittest.main()

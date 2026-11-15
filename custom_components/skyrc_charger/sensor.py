@@ -15,13 +15,15 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from .const import MODEL_MC5000
+from .const import MODEL_BD380, MODEL_MC5000
 from .coordinator import SkyrcConfigEntry, SkyrcCoordinator
 from .entity import SkyrcEntity
 from .models import ChannelData
@@ -101,6 +103,24 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
         value_fn=lambda slot: slot.temperature,
+    ),
+    SlotSensorDescription(
+        key="power",
+        translation_key="power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        models=frozenset({MODEL_BD380}),
+        value_fn=lambda slot: slot.power,
+    ),
+    SlotSensorDescription(
+        key="energy",
+        translation_key="energy",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.MEASUREMENT,
+        models=frozenset({MODEL_BD380}),
+        value_fn=lambda slot: slot.energy,
     ),
     SlotSensorDescription(
         key="resistance",

@@ -98,6 +98,12 @@
       },
       "voltage_curve_points": {
         "name": "Slot {slot} Voltage Curve Points"
+      },
+      "power": {
+        "name": "Slot {slot} Power"
+      },
+      "energy": {
+        "name": "Slot {slot} Energy"
       }
     },
     "button": {

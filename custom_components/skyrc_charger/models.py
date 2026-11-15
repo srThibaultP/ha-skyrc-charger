@@ -24,6 +24,8 @@ class ChannelData:
     temperature: float | None = None  # celsius
     resistance: float | None = None  # milliohms
     time: int | None = None  # seconds elapsed
+    power: float | None = None  # watts (BD380)
+    energy: float | None = None  # watt-hours (BD380)
     error: str | None = None  # MC5000 fault reported for the slot, if any
 
 
