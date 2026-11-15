@@ -17,7 +17,7 @@
           "passcode": "Passcode (MC5000)"
         },
         "data_description": {
-          "passcode": "The four digits the charger shows on its screen. 0000 from the factory."
+          "passcode": "The four digits the charger shows on its screen. 1234 from the factory."
         }
       }
     },
@@ -38,7 +38,7 @@
           "passcode": "Passcode"
         },
         "data_description": {
-          "passcode": "The four digits the charger shows on its screen. 0000 from the factory."
+          "passcode": "The four digits the charger shows on its screen. 1234 from the factory."
         }
       }
     },
