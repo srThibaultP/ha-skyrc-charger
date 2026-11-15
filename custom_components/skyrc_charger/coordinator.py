@@ -251,15 +251,17 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
         return program
 
     async def async_start_slot(self, slot: int, **overrides: Any) -> None:
-        await self.async_request_refresh()
+        # A read of its own: a debounced refresh would judge by the state from
+        # before the stop that usually comes just ahead of a start.
+        await self.async_refresh()
         self._refuse_running([slot])
         program = self._program_for(slot, overrides)
         _LOGGER.info("Starting slot %s of %s with %s", slot, self.address, program)
         await self._async_command(lambda client: client.start_channel(slot - 1, **program))
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_start_all(self, **overrides: Any) -> None:
-        await self.async_request_refresh()
+        await self.async_refresh()
         self._refuse_running(range(1, self.channel_count + 1))
         per_channel = {
             slot - 1: self._program_for(slot, overrides)
@@ -267,15 +269,15 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
         }
         _LOGGER.info("Starting every slot of %s with %s", self.address, per_channel)
         await self._async_command(lambda client: client.start_all(per_channel=per_channel))
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_stop_slot(self, slot: int) -> None:
         await self._async_command(lambda client: client.stop_channel(slot - 1))
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_stop_all(self) -> None:
         await self._async_command(lambda client: client.stop_all())
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_set_settings(self, **changes: Any) -> None:
         await self._async_command(lambda client: client.async_set_settings(**changes))
