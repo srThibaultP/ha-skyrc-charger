@@ -41,6 +41,10 @@ class DeviceData:
     model_code: str | None = None
     hw_version: str | None = None
     sw_version: str | None = None
+    #: Readings of the whole device (PSU650).
+    total_power: float | None = None  # watts
+    total_current: float | None = None  # amps
+    error: str | None = None
     # MC5000-only settings.
     beep_volume: str | None = None  # off / low / medium / high
     notification_volume: str | None = None

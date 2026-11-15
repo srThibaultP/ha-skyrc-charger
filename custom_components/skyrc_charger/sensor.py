@@ -23,12 +23,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from .const import MODEL_BD380, MODEL_MC5000
+from .const import MODEL_BD380, MODEL_MC5000, MODEL_PSU650
 from .coordinator import SkyrcConfigEntry, SkyrcCoordinator
 from .entity import SkyrcEntity
-from .models import ChannelData
+from .models import ChannelData, DeviceData
 
 PARALLEL_UPDATES = 0
+
+# A power supply reports a port's power, voltage and current, and no more.
+NO_SLOT_READINGS = frozenset({MODEL_PSU650})
 
 
 def _format_seconds(value: int | None) -> str | None:
@@ -44,6 +47,8 @@ class SlotSensorDescription(SensorEntityDescription):
     value_fn: Callable[[ChannelData], StateType]
     #: Models that report it; every model when empty.
     models: frozenset[str] = frozenset()
+    #: Models that do not.
+    exclude: frozenset[str] = frozenset()
 
 
 SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
@@ -89,6 +94,7 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         # a meter rollover and add to the long-term statistic.
         key="capacity",
         translation_key="capacity",
+        exclude=NO_SLOT_READINGS,
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:battery-plus",
@@ -98,6 +104,7 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         # Only known with an external probe plugged in; otherwise 0.
         key="temperature",
         translation_key="temperature",
+        exclude=NO_SLOT_READINGS,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -110,7 +117,7 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
-        models=frozenset({MODEL_BD380}),
+        models=frozenset({MODEL_BD380, MODEL_PSU650}),
         value_fn=lambda slot: slot.power,
     ),
     SlotSensorDescription(
@@ -125,6 +132,7 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
     SlotSensorDescription(
         key="resistance",
         translation_key="resistance",
+        exclude=NO_SLOT_READINGS,
         native_unit_of_measurement="mΩ",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:omega",
@@ -133,14 +141,53 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
     SlotSensorDescription(
         key="time",
         translation_key="time",
+        exclude=NO_SLOT_READINGS,
         icon="mdi:timer-outline",
         value_fn=lambda slot: _format_seconds(slot.time),
     ),
     SlotSensorDescription(
         key="error",
         translation_key="error",
+        exclude=NO_SLOT_READINGS,
         icon="mdi:alert-circle-outline",
         value_fn=lambda slot: slot.error or "none",
+    ),
+)
+
+
+@dataclass(frozen=True, kw_only=True)
+class DeviceSensorDescription(SensorEntityDescription):
+    """A sensor reading a value of the whole device."""
+
+    value_fn: Callable[[DeviceData], StateType]
+    models: frozenset[str]
+
+
+DEVICE_SENSORS: tuple[DeviceSensorDescription, ...] = (
+    DeviceSensorDescription(
+        key="total_power",
+        translation_key="total_power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        models=frozenset({MODEL_PSU650}),
+        value_fn=lambda device: device.total_power,
+    ),
+    DeviceSensorDescription(
+        key="total_current",
+        translation_key="total_current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        models=frozenset({MODEL_PSU650}),
+        value_fn=lambda device: device.total_current,
+    ),
+    DeviceSensorDescription(
+        key="device_error",
+        translation_key="device_error",
+        icon="mdi:alert-circle-outline",
+        models=frozenset({MODEL_PSU650}),
+        value_fn=lambda device: device.error or "none",
     ),
 )
 
@@ -151,16 +198,34 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities: list[SensorEntity] = []
+    entities: list[SensorEntity] = [
+        DeviceSensor(coordinator, description)
+        for description in DEVICE_SENSORS
+        if coordinator.model in description.models
+    ]
     for index in range(coordinator.channel_count):
         entities.extend(
             SlotSensor(coordinator, index, description)
             for description in SLOT_SENSORS
-            if not description.models or coordinator.model in description.models
+            if (not description.models or coordinator.model in description.models)
+            and coordinator.model not in description.exclude
         )
         if coordinator.supports_curves:
             entities.append(CurveSensor(coordinator, index))
     async_add_entities(entities)
+
+
+class DeviceSensor(SkyrcEntity, SensorEntity):
+    entity_description: DeviceSensorDescription
+
+    def __init__(self, coordinator: SkyrcCoordinator, description: DeviceSensorDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> StateType:
+        data = self.coordinator.data
+        return self.entity_description.value_fn(data.device) if data else None
 
 
 class SlotSensor(SkyrcEntity, SensorEntity):

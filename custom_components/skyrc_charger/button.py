@@ -82,7 +82,8 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = [
         DeviceButton(coordinator, description)
         for description in DEVICE_BUTTONS
-        if coordinator.supports_start or description.key != "start_all"
+        if (coordinator.supports_start or description.key != "start_all")
+        and (coordinator.supports_stop or description.key != "stop_all")
     ]
     for slot in range(1, coordinator.channel_count + 1):
         entities.extend(
@@ -90,6 +91,7 @@ async def async_setup_entry(
             for description in SLOT_BUTTONS
             if (coordinator.supports_start or description.key != "start")
             and (coordinator.supports_curves or description.key != "fetch_voltage_curve")
+            and (coordinator.supports_stop or description.key != "stop")
         )
     async_add_entities(entities)
 

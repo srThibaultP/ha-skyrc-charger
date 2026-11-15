@@ -29,7 +29,9 @@ from .const import (
     MC5000_BLE_NAME_PATTERNS,
     MODEL_BY_CODE,
     MODEL_NAMES,
+    MODEL_PSU650,
     OPTION_PASSCODE,
+    PSU650_NAME_FRAGMENT,
     default_passcode,
 )
 from .coordinator import CLIENTS
@@ -68,18 +70,22 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
         if device is None:
             return "cannot_connect", None, passcode
 
-        probe = Mc5000Client(device)
-        try:
-            await probe.connect(probe=True)
-            code = probe.model_code
-            await probe.disconnect()
-        except (BleakError, TimeoutError, OSError) as err:
-            _LOGGER.debug("Could not connect to %s: %r", address, err)
-            return "cannot_connect", None, passcode
+        if PSU650_NAME_FRAGMENT in (device.name or "").upper():
+            # The app tells the PSU650 by its Bluetooth name, not a model code.
+            model: str | None = MODEL_PSU650
+        else:
+            probe = Mc5000Client(device)
+            try:
+                await probe.connect(probe=True)
+                code = probe.model_code
+                await probe.disconnect()
+            except (BleakError, TimeoutError, OSError) as err:
+                _LOGGER.debug("Could not connect to %s: %r", address, err)
+                return "cannot_connect", None, passcode
 
-        model = MODEL_BY_CODE.get(code or "")
+            model = MODEL_BY_CODE.get(code or "")
         if model is None:
-            _LOGGER.warning("Unsupported SkyRC model code %r at %s", code, address)
+            _LOGGER.warning("Unsupported SkyRC model at %s", address)
             return "unsupported_model", None, passcode
 
         passcode = passcode or default_passcode(model)

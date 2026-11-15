@@ -10,10 +10,10 @@ chargers over BLE, from what the official SkyRC app does.
 | **NC3000** | Experimental, **monitoring and stop only**, written from the app and not tested on a charger. Starting a slot is refused until its program has been checked. |
 | **NC3000 Octa** (8 slots) | Experimental, **monitoring and stop only**, same limits as the NC3000. The app knows it by its model code `100228`. |
 | **BD380** (discharger) | Experimental, **monitoring and stop only**, written from the app and not tested on a device. One "slot": its state, the mode it holds constant (current, voltage, power or resistance), voltage, current, power, energy, capacity, elapsed time and temperature. Its password is the app's default, `5793`. |
+| **PSU650** (power supply) | Experimental, **monitoring only**, written from the app and not tested on a device. Recognised by its Bluetooth name. Slot 1 is the DC output, slots 2 to 4 the three USB-C ports: status, voltage, current, power and the negotiated protocol, plus total power, total current and the error code. Nothing to start or stop; switching a port is not offered yet. Its password is `5793`. |
 | **Q200, Q200V2, Q200 neo, Q500 neo, D100, D200s, D200 Nex, D200 neo (metal), D260, D750 Ultra, D8neo, B6nano, B6evo, B6 nax** | Experimental, **monitoring and stop only**. These older chargers use another protocol: each channel is unlocked with a password (5793 unless you changed it) and reports whether it works, its voltage, current, capacity, time, temperature and resistance. The number of channels and the password flag are the ones of the list the app downloads from SkyRC. Not tested on a charger. |
 
 The model is recognised when the charger is added: it tells it itself.
-One more model of the app, the PSU650 power supply, is planned.
 
 > **Version 2.0 dropped the MC3000.** The SkyRC app does not support it and its
 > support depended on a third-party library. If you still have an MC3000
@@ -73,8 +73,8 @@ For each of the four slots:
 `*_capacity`, `*_internal_resistance`, `*_elapsed_time`, `*_temperature`,
 `select.*_expected_chemistry`, `button.*_start`, `button.*_stop`.
 
-Only the entities a model reports are created. The BD380 adds a `*_power` (W)
-and an `*_energy` (Wh) sensor to its slot. The NC3000, the NC3000 Octa
+Only the entities a model reports are created. The BD380 adds a `*_power` (W) and an `*_energy` (Wh) sensor to its slot; the PSU650 adds
+`*_power` to each port, and total power, total current and an error sensor to the device. The NC3000, the NC3000 Octa
 and the NC2200 report no battery type; the NC2200 has no curve and no
 settings; no model other than the MC5000 has a start button, a chemistry
 select or `start_all` yet. The older chargers call their channels slots in the

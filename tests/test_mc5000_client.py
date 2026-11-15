@@ -1109,5 +1109,84 @@ class Bd380Test(unittest.IsolatedAsyncioTestCase):
             await client.start_channel(0)
 
 
+psu650 = load("psu650_client")
+Psu650Client = psu650.Psu650Client
+
+
+def _port_block(
+    enabled: bool, power: int, voltage: int, current: int, dc_mode: int | None
+) -> bytes:
+    block = bytearray([1 if enabled else 0])
+    block += power.to_bytes(2, "big") + voltage.to_bytes(2, "big") + current.to_bytes(2, "big")
+    if dc_mode is not None:
+        block.append(dc_mode)
+    return bytes(block)
+
+
+def _realtime_frame() -> bytes:
+    data = bytearray(36)
+    data[0:2] = (655).to_bytes(2, "big")  # total power, tenths of a watt
+    data[2] = 0  # error code
+    data[4:6] = (32).to_bytes(2, "big")  # total current
+    dc = _port_block(True, 300, 200, 15, dc_mode=1)  # 30 W, 20 V, 1.5 A, constant voltage
+    c1 = _port_block(True, 450, 90, 50, None)
+    c2 = _port_block(False, 0, 0, 0, None)
+    c3 = _port_block(True, 150, 50, 30, None)
+    data[6 : 6 + len(dc)] = dc
+    data[14 : 14 + len(c1)] = c1
+    data[21 : 21 + len(c2)] = c2
+    data[28 : 28 + len(c3)] = c3
+    body = bytes([0xB0, 0x00]) + bytes(data[:35])
+    return bytes([0x0F, len(body) + 1]) + body + bytes([sum(body) & 0xFF])
+
+
+class Psu650Test(unittest.IsolatedAsyncioTestCase):
+    def test_the_four_ports_and_the_totals(self) -> None:
+        ports, total_power, total_current, error = Psu650Client._parse_realtime(_realtime_frame())
+
+        self.assertEqual((total_power, total_current, error), (65.5, 3.2, 0))
+        self.assertEqual(
+            [(p.status, p.voltage, p.current, p.power) for p in ports],
+            [
+                ("on", 20.0, 1.5, 30.0),
+                ("on", 9.0, 5.0, 45.0),
+                ("off", 0.0, 0.0, 0.0),
+                ("on", 5.0, 3.0, 15.0),
+            ],
+        )
+        self.assertEqual(ports[0].mode, "constant_voltage")
+
+    def test_a_short_answer_leaves_the_ports_unavailable(self) -> None:
+        ports, *_ = Psu650Client._parse_realtime(bytes([0x0F, 0x03, 0xB0, 0, 0xB0]))
+
+        self.assertTrue(all(p.status == "unavailable" for p in ports))
+
+    def test_the_protocol_each_usb_c_port_negotiated(self) -> None:
+        ports, *_ = Psu650Client._parse_realtime(_realtime_frame())
+        detail = bytearray(40)
+        detail[4 + 1] = 15  # C1: pd_5v
+        detail[4 + 11] = 18  # C2: pd_pps
+        detail[4 + 21] = 99  # C3: not in the table
+
+        Psu650Client._apply_pd_detail(ports, bytes(detail))
+
+        self.assertEqual([p.mode for p in ports[1:]], ["pd_5v", "pd_pps", "unknown_99"])
+
+    def test_the_frame_carries_an_id_after_the_command(self) -> None:
+        packet = mc5000._build_packet(0xB0, b"\x00" + b"\x00")
+
+        self.assertEqual(packet, bytes.fromhex("0f04b00000b0"))
+
+    async def test_a_power_supply_has_nothing_to_start_or_stop(self) -> None:
+        client = Psu650Client(FakeDevice())
+        await _connect(client)
+        client._client.writes.clear()
+
+        for call in (client.start_all(), client.stop_all(), client.stop_channel(0)):
+            with self.assertRaises(ValueError):
+                await call
+        self.assertEqual(client._client.writes, [])
+
+
 if __name__ == "__main__":
     unittest.main()
