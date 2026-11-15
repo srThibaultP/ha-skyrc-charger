@@ -60,8 +60,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      # The tests stub Home Assistant and the BLE libraries (tests/_harness.py),
-      # so the standard library and coverage are all they need.
+      # The driver tests stub the BLE libraries (tests/_harness.py), so the
+      # standard library and coverage are all they need.
       - run: pip install coverage
       - run: coverage run -m unittest discover -s tests -v
       - run: coverage report
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # The integration runs inside a real Home Assistant (tests_ha).
+      - run: >
+          pip install pytest-homeassistant-custom-component bleak-retry-connector
+          aiousbwatcher bluetooth-adapters bluetooth-auto-recovery
+          bluetooth-data-tools dbus-fast habluetooth pyserial pyudev
+      - run: pytest tests_ha

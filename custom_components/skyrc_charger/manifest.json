@@ -1,6 +1,12 @@
 {
   "domain": "skyrc_charger",
   "name": "SkyRC Charger",
+  "bluetooth": [
+    {
+      "local_name": "#Charger*",
+      "connectable": true
+    }
+  ],
   "codeowners": [
     "@srThibaultP"
   ],

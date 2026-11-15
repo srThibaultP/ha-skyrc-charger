@@ -1,10 +1,9 @@
-"""Import the integration without Home Assistant installed.
+"""Import the driver without Bluetooth libraries installed.
 
-The modules under test are pure Python, but they import `homeassistant`,
-`bleak` and `bleak_retry_connector` at module level. Rather
-than pull the whole of Home Assistant into CI, stub those imports with the
-handful of names the integration actually touches, then load the package
-modules straight from disk.
+The driver (`mc5000_client`) is pure Python apart from `bleak` and
+`bleak_retry_connector`. Stub those two with the handful of names it touches,
+then load its modules straight from disk. The integration itself, which needs
+Home Assistant, is tested under `tests_ha` with the real thing.
 """
 
 from __future__ import annotations
@@ -17,29 +16,6 @@ import types
 ROOT = Path(__file__).parents[1]
 PACKAGE = "custom_components.skyrc_charger"
 PACKAGE_PATH = ROOT / "custom_components" / "skyrc_charger"
-
-
-class UpdateFailed(Exception):
-    """Stand-in for homeassistant.helpers.update_coordinator.UpdateFailed."""
-
-
-class DataUpdateCoordinator:
-    """Minimal base class, enough to instantiate the coordinator."""
-
-    def __init__(self, hass, logger, config_entry=None, name=None, update_interval=None) -> None:
-        self.hass = hass
-        self.logger = logger
-        self.config_entry = config_entry
-        self.name = name
-        self.update_interval = update_interval
-        self.data = None
-        self.last_update_success = True
-
-    def async_update_listeners(self) -> None:
-        pass
-
-    async def async_request_refresh(self) -> None:
-        pass
 
 
 class FakeBleakClient:
@@ -59,10 +35,6 @@ class FakeBleakClient:
 
     async def disconnect(self) -> None:
         self.is_connected = False
-
-
-class HomeAssistantError(Exception):
-    pass
 
 
 class BleakError(Exception):
@@ -93,42 +65,10 @@ def _install_stubs() -> None:
     retry = types.ModuleType("bleak_retry_connector")
     retry.establish_connection = establish_connection
 
-    homeassistant = types.ModuleType("homeassistant")
-    components = types.ModuleType("homeassistant.components")
-    bluetooth = types.ModuleType("homeassistant.components.bluetooth")
-    bluetooth.async_ble_device_from_address = lambda *args, **kwargs: None
-    bluetooth.async_discovered_service_info = lambda *args, **kwargs: []
-    config_entries = types.ModuleType("homeassistant.config_entries")
-    config_entries.ConfigEntry = object
-    exceptions = types.ModuleType("homeassistant.exceptions")
-    exceptions.HomeAssistantError = HomeAssistantError
-    core = types.ModuleType("homeassistant.core")
-    core.HomeAssistant = object
-    helpers = types.ModuleType("homeassistant.helpers")
-    update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
-    update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
-    update_coordinator.UpdateFailed = UpdateFailed
-
-    homeassistant.components = components
-    homeassistant.config_entries = config_entries
-    homeassistant.core = core
-    homeassistant.exceptions = exceptions
-    homeassistant.helpers = helpers
-    components.bluetooth = bluetooth
-    helpers.update_coordinator = update_coordinator
-
     modules = {
         "bleak": bleak,
         "bleak.exc": bleak_exc,
         "bleak_retry_connector": retry,
-        "homeassistant": homeassistant,
-        "homeassistant.components": components,
-        "homeassistant.components.bluetooth": bluetooth,
-        "homeassistant.config_entries": config_entries,
-        "homeassistant.core": core,
-        "homeassistant.exceptions": exceptions,
-        "homeassistant.helpers": helpers,
-        "homeassistant.helpers.update_coordinator": update_coordinator,
     }
     sys.modules.update(modules)
 

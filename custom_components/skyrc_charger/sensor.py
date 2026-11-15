@@ -1,216 +1,195 @@
+"""Sensors of a SkyRC charger: what each slot reports, and its logged curve."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.const import UnitOfElectricCurrent, UnitOfElectricPotential, UnitOfTemperature
-from homeassistant.helpers.entity import EntityCategory
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfTemperature,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.typing import StateType
 
-from .const import DOMAIN, MODEL_MC5000
+from .coordinator import SkyrcConfigEntry, SkyrcCoordinator
 from .entity import SkyrcEntity
+from .models import ChannelData
+
+PARALLEL_UPDATES = 0
 
 
-@dataclass(frozen=True)
-class SkyrcSensorDescription:
-    key: str
-    name: str
-    native_unit_of_measurement: str | None = None
-    device_class: SensorDeviceClass | None = None
-    state_class: SensorStateClass | None = None
-    icon: str | None = None
-    entity_category: EntityCategory | None = None
-    value_fn: Callable[[Any], Any] = lambda _: None
-    # Models the sensor exists on; None means every model.
-    models: tuple[str, ...] | None = None
-    enabled_default: bool = True
-
-
-def _format_seconds(value: Any) -> str | None:
-    if value is None:
+def _format_seconds(value: int | None) -> str | None:
+    if value is None or value < 0:
         return None
-    try:
-        total_seconds = int(value)
-    except (TypeError, ValueError):
-        return None
-    if total_seconds < 0:
-        return None
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{value // 3600}:{value % 3600 // 60:02d}:{value % 60:02d}"
 
 
-CHANNEL_SENSORS: tuple[SkyrcSensorDescription, ...] = (
-    SkyrcSensorDescription(
-        "status", "Status", icon="mdi:state-machine", value_fn=lambda ch: ch.status
+@dataclass(frozen=True, kw_only=True)
+class SlotSensorDescription(SensorEntityDescription):
+    """A sensor reading one value of a slot."""
+
+    value_fn: Callable[[ChannelData], StateType]
+
+
+SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
+    SlotSensorDescription(
+        key="status",
+        translation_key="status",
+        icon="mdi:state-machine",
+        value_fn=lambda slot: slot.status,
     ),
-    SkyrcSensorDescription(
-        "battery_type", "Battery Type", icon="mdi:battery", value_fn=lambda ch: ch.chemistry
+    SlotSensorDescription(
+        key="battery_type",
+        translation_key="battery_type",
+        icon="mdi:battery",
+        value_fn=lambda slot: slot.chemistry,
     ),
-    SkyrcSensorDescription("mode", "Mode", icon="mdi:battery-sync", value_fn=lambda ch: ch.mode),
-    SkyrcSensorDescription(
-        "voltage",
-        "Voltage",
+    SlotSensorDescription(
+        key="mode",
+        translation_key="mode",
+        icon="mdi:battery-sync",
+        value_fn=lambda slot: slot.mode,
+    ),
+    SlotSensorDescription(
+        key="voltage",
+        translation_key="voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda ch: ch.voltage,
+        suggested_display_precision=3,
+        value_fn=lambda slot: slot.voltage,
     ),
-    SkyrcSensorDescription(
-        "current",
-        "Current",
+    SlotSensorDescription(
+        key="current",
+        translation_key="current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda ch: ch.current,
+        value_fn=lambda slot: slot.current,
     ),
-    SkyrcSensorDescription(
-        # MEASUREMENT, not TOTAL_INCREASING: the charger resets this counter
-        # to zero at the start of every run, which a total-increasing sensor
-        # would read as a meter rollover and add to the long-term statistic.
-        "capacity",
-        "Capacity",
+    SlotSensorDescription(
+        # MEASUREMENT, not TOTAL_INCREASING: the charger resets this counter at
+        # the start of every run, which a total-increasing sensor would read as
+        # a meter rollover and add to the long-term statistic.
+        key="capacity",
+        translation_key="capacity",
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:battery-plus",
-        value_fn=lambda ch: ch.capacity,
+        value_fn=lambda slot: slot.capacity,
     ),
-    SkyrcSensorDescription(
-        "temperature",
-        "Temperature",
+    SlotSensorDescription(
+        # Only known with an external probe plugged in; otherwise 0.
+        key="temperature",
+        translation_key="temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda ch: ch.temperature,
-        # The MC5000 only knows a slot's temperature when an external probe is
-        # plugged in; without one it reports 0, which stays "unknown".
-        enabled_default=False,
-        models=(MODEL_MC5000,),
+        entity_registry_enabled_default=False,
+        value_fn=lambda slot: slot.temperature,
     ),
-    SkyrcSensorDescription(
-        "resistance",
-        "Internal Resistance",
+    SlotSensorDescription(
+        key="resistance",
+        translation_key="resistance",
         native_unit_of_measurement="mΩ",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:omega",
-        value_fn=lambda ch: ch.resistance,
+        value_fn=lambda slot: slot.resistance,
     ),
-    SkyrcSensorDescription(
-        "time",
-        "Elapsed Time",
+    SlotSensorDescription(
+        key="time",
+        translation_key="time",
         icon="mdi:timer-outline",
-        value_fn=lambda ch: _format_seconds(ch.time),
+        value_fn=lambda slot: _format_seconds(slot.time),
     ),
-    SkyrcSensorDescription(
-        "error",
-        "Error",
+    SlotSensorDescription(
+        key="error",
+        translation_key="error",
         icon="mdi:alert-circle-outline",
-        value_fn=lambda ch: ch.error or "none",
-        models=(MODEL_MC5000,),
+        value_fn=lambda slot: slot.error or "none",
     ),
 )
 
-DEVICE_SENSORS: tuple[SkyrcSensorDescription, ...] = (SkyrcSensorDescription(),)
 
-
-def _for_model(descriptions, model: str):
-    return [d for d in descriptions if d.models is None or model in d.models]
-
-
-async def async_setup_entry(hass, entry, async_add_entities):
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-
-    entities: list[SensorEntity] = [
-        SkyrcDeviceSensor(coordinator, entry.entry_id, description)
-        for description in _for_model(DEVICE_SENSORS, coordinator.model)
-    ]
-
-    for slot_index in range(coordinator.channel_count):
-        entities.extend(
-            SkyrcChannelSensor(coordinator, entry.entry_id, slot_index, description)
-            for description in _for_model(CHANNEL_SENSORS, coordinator.model)
-        )
-        if coordinator.supports_voltage_curves:
-            entities.append(SkyrcVoltageCurveSensor(coordinator, entry.entry_id, slot_index))
-
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: SkyrcConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data
+    entities: list[SensorEntity] = []
+    for index in range(coordinator.channel_count):
+        entities.extend(SlotSensor(coordinator, index, description) for description in SLOT_SENSORS)
+        entities.append(CurveSensor(coordinator, index))
     async_add_entities(entities)
 
 
-class SkyrcBaseSensor(SkyrcEntity, SensorEntity):
-    _attr_has_entity_name = True
+class SlotSensor(SkyrcEntity, SensorEntity):
+    entity_description: SlotSensorDescription
 
-    def __init__(self, coordinator, entry_id: str, description: SkyrcSensorDescription) -> None:
-        super().__init__(coordinator, entry_id)
-        self.entity_description_custom = description
-        self._attr_native_unit_of_measurement = description.native_unit_of_measurement
-        self._attr_device_class = description.device_class
-        self._attr_state_class = description.state_class
-        self._attr_icon = description.icon
-        self._attr_entity_category = description.entity_category
-        self._attr_entity_registry_enabled_default = description.enabled_default
-        if description.key == "voltage":
-            self._attr_suggested_display_precision = 3
-
-
-class SkyrcDeviceSensor(SkyrcBaseSensor):
-    def __init__(self, coordinator, entry_id, description) -> None:
-        super().__init__(coordinator, entry_id, description)
-        self._attr_name = description.name
-        self._attr_unique_id = f"{entry_id}_{description.key}"
+    def __init__(
+        self,
+        coordinator: SkyrcCoordinator,
+        index: int,
+        description: SlotSensorDescription,
+    ) -> None:
+        super().__init__(coordinator, f"slot_{index + 1}_{description.key}")
+        self.entity_description = description
+        self._index = index
+        self._attr_translation_placeholders = {"slot": str(index + 1)}
 
     @property
-    def native_value(self):
-        if not self.coordinator.data:
+    def native_value(self) -> StateType:
+        data = self.coordinator.data
+        if data is None or self._index >= len(data.channels):
             return None
-        return self.entity_description_custom.value_fn(self.coordinator.data["device"])
+        return self.entity_description.value_fn(data.channels[self._index])
 
 
-class SkyrcChannelSensor(SkyrcBaseSensor):
-    def __init__(self, coordinator, entry_id, slot_index, description) -> None:
-        super().__init__(coordinator, entry_id, description)
-        self.slot_index = slot_index
-        self._attr_name = f"Slot {slot_index + 1} {description.name}"
-        self._attr_unique_id = f"{entry_id}_slot_{slot_index + 1}_{description.key}"
+class CurveSensor(SkyrcEntity, SensorEntity):
+    """The voltage curve the charger logged for a slot.
 
-    @property
-    def native_value(self):
-        if not self.coordinator.data:
-            return None
-        channels = self.coordinator.data["channels"]
-        if self.slot_index >= len(channels):
-            return None
-        channel = channels[self.slot_index]
-        if channel is None:
-            return None
-        return self.entity_description_custom.value_fn(channel)
-
-
-class SkyrcVoltageCurveSensor(SkyrcEntity, SensorEntity):
-    """The voltage curve the charger logged for one slot.
-
-    The state is the number of usable samples; the curve itself rides along
-    as attributes so a dashboard chart can plot it.
+    The state is the number of samples; the curve rides along as attributes,
+    which the recorder leaves out, so a dashboard chart can plot it.
     """
 
-    _attr_has_entity_name = True
+    _attr_translation_key = "voltage_curve_points"
     _attr_icon = "mdi:chart-line"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _unrecorded_attributes = frozenset({"samples_mv", "samples_v"})
 
-    def __init__(self, coordinator, entry_id: str, slot_index: int) -> None:
-        super().__init__(coordinator, entry_id)
-        self.slot_index = slot_index
-        self._attr_name = f"Slot {slot_index + 1} Voltage Curve Points"
-        self._attr_unique_id = f"{entry_id}_slot_{slot_index + 1}_voltage_curve_points"
-
-    @property
-    def native_value(self):
-        data = self.coordinator.voltage_curves.get(self.slot_index)
-        return data["nonzero_sample_count"] if data else None
+    def __init__(self, coordinator: SkyrcCoordinator, index: int) -> None:
+        super().__init__(coordinator, f"slot_{index + 1}_voltage_curve_points")
+        self._index = index
+        self._attr_translation_placeholders = {"slot": str(index + 1)}
 
     @property
-    def extra_state_attributes(self):
-        data = self.coordinator.voltage_curves.get(self.slot_index)
-        if not data:
+    def native_value(self) -> int | None:
+        curve = self.coordinator.curves.get(self._index)
+        if curve is None:
+            return None
+        return sum(1 for sample in curve.samples_mv if sample > 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        curve = self.coordinator.curves.get(self._index)
+        if curve is None:
             return {}
-        return dict(data)
+        return {
+            "sample_count": len(curve.samples_mv),
+            "interval_seconds": curve.interval_seconds,
+            "checksum_ok": curve.checksum_ok,
+            "samples_mv": curve.samples_mv,
+            "samples_v": [round(sample / 1000, 3) for sample in curve.samples_mv],
+            "last_fetched": curve.fetched_at.isoformat(timespec="seconds"),
+        }

@@ -1,129 +1,113 @@
+"""Buttons of a SkyRC charger."""
+
 from __future__ import annotations
 
-from homeassistant.components.button import ButtonEntity
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
-from .const import DOMAIN
-from .entity import SkyrcEntity
+from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from .coordinator import SkyrcConfigEntry, SkyrcCoordinator
+from .entity import SkyrcAlwaysAvailableEntity
+
+# Commands share one BLE link, which the coordinator serialises.
+PARALLEL_UPDATES = 1
 
 
-async def async_setup_entry(hass, entry, async_add_entities):
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+@dataclass(frozen=True, kw_only=True)
+class DeviceButtonDescription(ButtonEntityDescription):
+    press_fn: Callable[[SkyrcCoordinator], Awaitable[None]]
 
+
+@dataclass(frozen=True, kw_only=True)
+class SlotButtonDescription(ButtonEntityDescription):
+    press_fn: Callable[[SkyrcCoordinator, int], Awaitable[None]]
+
+
+async def _fetch_curve(coordinator: SkyrcCoordinator, slot: int) -> None:
+    await coordinator.async_fetch_curve(slot)
+
+
+DEVICE_BUTTONS = (
+    DeviceButtonDescription(
+        key="refresh",
+        translation_key="refresh",
+        icon="mdi:refresh",
+        press_fn=lambda coordinator: coordinator.async_request_refresh(),
+    ),
+    DeviceButtonDescription(
+        key="start_all",
+        translation_key="start_all",
+        icon="mdi:play-circle-outline",
+        press_fn=lambda coordinator: coordinator.async_start_all(),
+    ),
+    DeviceButtonDescription(
+        key="stop_all",
+        translation_key="stop_all",
+        icon="mdi:stop-circle-outline",
+        press_fn=lambda coordinator: coordinator.async_stop_all(),
+    ),
+)
+
+SLOT_BUTTONS = (
+    SlotButtonDescription(
+        key="start",
+        translation_key="slot_start",
+        icon="mdi:play-circle-outline",
+        press_fn=lambda coordinator, slot: coordinator.async_start_slot(slot),
+    ),
+    SlotButtonDescription(
+        key="stop",
+        translation_key="slot_stop",
+        icon="mdi:stop-circle-outline",
+        press_fn=lambda coordinator, slot: coordinator.async_stop_slot(slot),
+    ),
+    SlotButtonDescription(
+        key="fetch_voltage_curve",
+        translation_key="fetch_voltage_curve",
+        icon="mdi:chart-line",
+        press_fn=_fetch_curve,
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: SkyrcConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data
     entities: list[ButtonEntity] = [
-        SkyrcRefreshButton(coordinator, entry.entry_id),
-        SkyrcStartAllButton(coordinator, entry.entry_id),
-        SkyrcStopAllButton(coordinator, entry.entry_id),
+        DeviceButton(coordinator, description) for description in DEVICE_BUTTONS
     ]
-
-    for slot_index in range(coordinator.channel_count):
-        entities.append(SkyrcStartSlotButton(coordinator, entry.entry_id, slot_index))
-        entities.append(SkyrcStopSlotButton(coordinator, entry.entry_id, slot_index))
-        if coordinator.supports_voltage_curves:
-            entities.append(SkyrcFetchVoltageCurveButton(coordinator, entry.entry_id, slot_index))
-
+    for slot in range(1, coordinator.channel_count + 1):
+        entities.extend(SlotButton(coordinator, slot, description) for description in SLOT_BUTTONS)
     async_add_entities(entities)
 
 
-class SkyrcBaseButton(SkyrcEntity, ButtonEntity):
-    """A button always stays pressable, even while the charger is offline."""
+class DeviceButton(SkyrcAlwaysAvailableEntity, ButtonEntity):
+    entity_description: DeviceButtonDescription
 
-    @property
-    def available(self) -> bool:
-        return True
-
-
-class SkyrcRefreshButton(SkyrcBaseButton):
-    _attr_icon = "mdi:refresh"
-
-    def __init__(self, coordinator, entry_id: str) -> None:
-        super().__init__(coordinator, entry_id)
-        self._attr_name = "Refresh"
-        self._attr_unique_id = f"{entry_id}_refresh"
+    def __init__(self, coordinator: SkyrcCoordinator, description: DeviceButtonDescription) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
 
     async def async_press(self) -> None:
-        await self.coordinator.async_request_refresh()
+        await self.entity_description.press_fn(self.coordinator)
 
 
-class SkyrcStopAllButton(SkyrcBaseButton):
-    _attr_icon = "mdi:stop-circle-outline"
+class SlotButton(SkyrcAlwaysAvailableEntity, ButtonEntity):
+    entity_description: SlotButtonDescription
 
-    def __init__(self, coordinator, entry_id: str) -> None:
-        super().__init__(coordinator, entry_id)
-        self._attr_name = "Stop All"
-        self._attr_unique_id = f"{entry_id}_stop_all"
-
-    async def async_press(self) -> None:
-        charger = await self.async_connected_charger()
-        await charger.stop_all()
-        await self.coordinator.async_request_refresh()
-
-
-class SkyrcStartAllButton(SkyrcBaseButton):
-    """Start every slot, through the chemistry-checked start service."""
-
-    _attr_icon = "mdi:play-circle-outline"
-
-    def __init__(self, coordinator, entry_id: str) -> None:
-        super().__init__(coordinator, entry_id)
-        self._attr_name = "Start All"
-        self._attr_unique_id = f"{entry_id}_start_all"
+    def __init__(
+        self, coordinator: SkyrcCoordinator, slot: int, description: SlotButtonDescription
+    ) -> None:
+        super().__init__(coordinator, f"slot_{slot}_{description.key}")
+        self.entity_description = description
+        self._slot = slot
+        self._attr_translation_placeholders = {"slot": str(slot)}
 
     async def async_press(self) -> None:
-        await self.hass.services.async_call(
-            DOMAIN,
-            "start_all",
-            {"entry_id": self.entry_id},
-            blocking=True,
-        )
-
-
-class SkyrcStartSlotButton(SkyrcBaseButton):
-    _attr_icon = "mdi:play-circle-outline"
-
-    def __init__(self, coordinator, entry_id: str, slot_index: int) -> None:
-        super().__init__(coordinator, entry_id)
-        self.slot_index = slot_index
-        self.slot = slot_index + 1
-        self._attr_name = f"Slot {self.slot} Start"
-        self._attr_unique_id = f"{entry_id}_slot_{self.slot}_start"
-
-    async def async_press(self) -> None:
-        # Go through the service so the button gets the same chemistry
-        # interlock (and, on the MC5000, the same program defaults) as a
-        # scripted start.
-        await self.hass.services.async_call(
-            DOMAIN,
-            "start_slot",
-            {"entry_id": self.entry_id, "slot": self.slot},
-            blocking=True,
-        )
-
-
-class SkyrcStopSlotButton(SkyrcBaseButton):
-    _attr_icon = "mdi:stop-circle-outline"
-
-    def __init__(self, coordinator, entry_id: str, slot_index: int) -> None:
-        super().__init__(coordinator, entry_id)
-        self.slot_index = slot_index
-        self.slot = slot_index + 1
-        self._attr_name = f"Slot {self.slot} Stop"
-        self._attr_unique_id = f"{entry_id}_slot_{self.slot}_stop"
-
-    async def async_press(self) -> None:
-        charger = await self.async_connected_charger()
-        await charger.stop_channel(self.slot_index)
-        await self.coordinator.async_request_refresh()
-
-
-class SkyrcFetchVoltageCurveButton(SkyrcBaseButton):
-    _attr_icon = "mdi:chart-line"
-
-    def __init__(self, coordinator, entry_id: str, slot_index: int) -> None:
-        super().__init__(coordinator, entry_id)
-        self.slot_index = slot_index
-        self.slot = slot_index + 1
-        self._attr_name = f"Slot {self.slot} Fetch Voltage Curve"
-        self._attr_unique_id = f"{entry_id}_slot_{self.slot}_fetch_voltage_curve"
-
-    async def async_press(self) -> None:
-        await self.coordinator.async_fetch_voltage_curve(self.slot_index)
+        await self.entity_description.press_fn(self.coordinator, self._slot)

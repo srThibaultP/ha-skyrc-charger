@@ -3,17 +3,13 @@ SkyRC Charger for Home Assistant
 The MIT license in LICENSE covers the original work in this repository by
 Thibault PECH and contributors.
 
-This repository is a fork of jperquin/ha-skyrc-mc3000
-(https://github.com/jperquin/ha-skyrc-mc3000). That project published no
-license, so the parts of the code that come from it remain the property of
-their author, Joost Perquin, and LICENSE does not grant any rights to them.
-
-The MC5000 driver (mc5000_client.py) is written from the protocol the
-official SkyRC app speaks and was checked against a charger. It contains no
-code from the project above, and the MC3000 code that came from it, together
-with the skyrc-ble library it relied on, was removed in version 2.0. The
-structure of the integration (config flow, coordinator, entities) still
-started from that project.
+This repository started as a fork of jperquin/ha-skyrc-mc3000
+(https://github.com/jperquin/ha-skyrc-mc3000), which published no license.
+None of that project's code is left, apart from the calls to Home Assistant's
+own APIs that any integration makes: the MC3000 support was removed, and the
+integration (config flow, coordinator, entities, services) and the MC5000
+driver were rewritten from the protocol of the official SkyRC app and Home
+Assistant's own conventions. The MIT license covers the whole repository.
 
 The icon and logo (icon.png and custom_components/skyrc_charger/brand/) are
 the SkyRC app icon, taken from the official SkyRC app. The SkyRC name and

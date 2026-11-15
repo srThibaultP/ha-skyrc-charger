@@ -15,9 +15,8 @@ MC5000 battery charger (four slots) over BLE.
   layouts, and the voltage ranges and defaults it offers for each chemistry.
   Status, settings, start and stop were checked against a charger on
   firmware 1.83 with a NiMH cell.
-- The structure of the integration (config flow, coordinator, entities) comes
-  from [jperquin/ha-skyrc-mc3000](https://github.com/jperquin/ha-skyrc-mc3000),
-  see [NOTICE](NOTICE).
+- The rest of the integration (config flow, coordinator, entities, services) is
+  written for this project, to Home Assistant's own conventions.
 
 ## Installation
 
@@ -35,17 +34,20 @@ Copy `custom_components/skyrc_charger` into your Home Assistant
 
 ### Setup
 
-`Settings → Devices & services → Add integration → SkyRC Charger`, choose
-your model (MC5000), then pick or enter the BLE address. The
-device list comes from Home Assistant's own Bluetooth manager, so chargers
-seen through an ESPHome or Shelly Bluetooth proxy show up as well.
+A charger in range of Home Assistant's Bluetooth is offered automatically
+(Settings → Devices & services). Otherwise: `Add integration → SkyRC Charger`,
+pick it in the list or type its Bluetooth address. The list comes from Home
+Assistant's own Bluetooth manager, so chargers seen through an ESPHome or
+Shelly Bluetooth proxy show up as well. Home Assistant connects to the charger
+to check it: it must be on, and reachable by an adapter or an *active*
+Bluetooth proxy (a passive scanner hears it but cannot connect).
 
-The **MC5000** has a four digit passcode, shown on its screen (`1234` from
-the factory). Enter it during setup, or later under the integration's
-**Configure** button. With the wrong one the charger still reports its
-status, and a warning in the log says the passcode was refused.
+The charger has a four digit passcode, shown on its screen (`1234` from the
+factory). Enter it during setup. If the charger later refuses it, Home
+Assistant asks for the right one (the "Repairs"-style reauthentication
+notice). It can also be changed under the integration's **Configure** button.
 
-You can add **multiple chargers** — each becomes its own config entry/device.
+You can add **multiple chargers**: each becomes its own config entry/device.
 
 ## Entities
 
@@ -94,7 +96,8 @@ The charger only allows one BLE client at a time. To use the official SkyRC
 app, turn off the entry's "Enable polling for changes" system option
 (Settings → Devices & services → SkyRC Charger → ⋮ → System options), or
 disable the entry. With polling off, Home Assistant only connects when you
-press refresh, start or stop a slot.
+press refresh, start or stop a slot, and lets go of the charger again a
+minute later.
 
 ## Services
 
@@ -196,6 +199,5 @@ profile that gets sent to the device.
 
 ## License
 
-MIT for the original work in this repository, see [LICENSE](LICENSE). Code
-inherited from the upstream project, which has no license, is not covered:
-see [NOTICE](NOTICE).
+MIT, see [LICENSE](LICENSE). The SkyRC name and icon are SkyRC's: see
+[NOTICE](NOTICE).
