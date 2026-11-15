@@ -92,7 +92,8 @@ every 8 seconds at first, then the interval doubles as the run grows (16 s
 after about 40 minutes), and the curve comes back in pages of 100 samples.
 
 The per-slot `sensor.*_error` (`none`, or the fault the charger
-reports: `reversed_polarity`, `wrong_battery_type`, `capacity_limit`, …) and
+reports: `reversed_polarity`, `wrong_battery_type`, `capacity_limit`, …; its `description` attribute says what it means and what usually
+causes it) and
 the charger's own settings, which you can change from Home Assistant:
 `select.*_beep_volume`, `*_notification_volume` (off, low, medium, high),
 `*_end_notification` (once, repeat), `*_backlight` (low, medium, high),

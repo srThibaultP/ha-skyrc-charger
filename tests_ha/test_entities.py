@@ -140,3 +140,20 @@ async def test_the_status_sensors_read_the_slots(
     assert state("capacity") == "380"
     assert state("elapsed_time") == "1:02:05"
     assert state("error") == "none"
+
+
+async def test_an_error_comes_with_what_it_means(
+    hass: HomeAssistant, entry: MockConfigEntry, client: FakeClient
+) -> None:
+    client.channels[3] = ChannelData(
+        index=3, status="error", voltage=1.471, current=0.0, error="battery_disconnected"
+    )
+    coordinator = entry.runtime_data
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.skyrc_mc5000_slot_4_error")
+
+    assert state.state == "battery_disconnected"
+    assert "lost contact" in state.attributes["description"]
+    assert "description" not in hass.states.get("sensor.skyrc_mc5000_slot_1_error").attributes
