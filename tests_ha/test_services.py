@@ -161,3 +161,21 @@ async def test_the_buttons_do_what_the_services_do(
 
     assert client.called("start_channel") == [(0, {"chemistry": "nimh"})]
     assert client.called("stop_channel") == [0]
+
+
+async def test_a_start_right_after_a_stop_sees_the_slot_free(
+    hass: HomeAssistant, entry: MockConfigEntry, client: FakeClient
+) -> None:
+    """The refresh that follows a stop is debounced; the start must not trust it."""
+    client.channels[0] = ChannelData(index=0, status="charging", voltage=1.3, current=0.5)
+    await _call(hass, "refresh")
+    assert hass.states.get("sensor.skyrc_mc5000_slot_1_status").state == "charging"
+
+    async def stop_channel(channel: int) -> None:
+        client.channels[channel] = ChannelData(index=channel, status="idle", voltage=1.3)
+
+    client.stop_channel = stop_channel  # type: ignore[method-assign]
+    await _call(hass, "stop_slot", slot=1)
+    await _call(hass, "start_slot", slot=1, chemistry="nimh")
+
+    assert client.called("start_channel") == [(0, {"chemistry": "nimh"})]
