@@ -49,37 +49,37 @@ views:
       icon: mdi:cog-outline
       heading_style: subtitle
     - type: tile
-      entity: sensor.skyrc_mc5000_beep_volume
+      entity: select.skyrc_mc5000_beep_volume
       name: Beep
       icon: mdi:volume-high
       grid_options:
         columns: 6
     - type: tile
-      entity: sensor.skyrc_mc5000_notification_volume
+      entity: select.skyrc_mc5000_notification_volume
       name: Notifications
       icon: mdi:bell-ring-outline
       grid_options:
         columns: 6
     - type: tile
-      entity: sensor.skyrc_mc5000_end_notification
+      entity: select.skyrc_mc5000_end_notification
       name: End of charge
       icon: mdi:bell-check-outline
       grid_options:
         columns: 6
     - type: tile
-      entity: sensor.skyrc_mc5000_backlight
+      entity: select.skyrc_mc5000_backlight
       name: Backlight
       icon: mdi:brightness-6
       grid_options:
         columns: 6
     - type: tile
-      entity: sensor.skyrc_mc5000_warning_tone
+      entity: switch.skyrc_mc5000_warning_tone
       name: Warning tone
       icon: mdi:alert-octagon-outline
       grid_options:
         columns: 6
     - type: tile
-      entity: sensor.skyrc_mc5000_sleep_timer
+      entity: select.skyrc_mc5000_sleep_timer
       name: Sleep timer
       icon: mdi:sleep
       grid_options:

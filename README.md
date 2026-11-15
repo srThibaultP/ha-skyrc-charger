@@ -55,23 +55,29 @@ and so on.
 
 For each of the four slots:
 `sensor.*_status`, `*_battery_type`, `*_mode`, `*_voltage`, `*_current`,
-`*_capacity`, `*_internal_resistance`, `*_elapsed_time`,
+`*_capacity`, `*_internal_resistance`, `*_elapsed_time`, `*_temperature`,
 `select.*_expected_chemistry`, `button.*_start`, `button.*_stop`.
 
 Device-level: `button.*_refresh`, `button.*_start_all`, `button.*_stop_all`.
 
-Per slot, the logged voltage curve: `sensor.*_voltage_curve_points`,
-`button.*_fetch_voltage_curve` and `switch.*_auto_fetch_voltage_curves`.
+Per slot, the logged voltage curve: the `sensor.*_voltage_curve_points` /
+`button.*_fetch_voltage_curve` pair and `switch.*_auto_fetch_voltage_curves`.
 The charger logs the whole run from the start of the program: one sample
 every 8 seconds at first, then the interval doubles as the run grows (16 s
 after about 40 minutes), and the curve comes back in pages of 100 samples.
 
-Per slot, the error: `sensor.*_error` (`none`, or the fault the charger
-reports: `reversed_polarity`, `wrong_battery_type`, `capacity_limit`, …).
-The device diagnostic sensors `*_beep_volume`, `*_notification_volume`,
-`*_end_notification`, `*_backlight`, `*_warning_tone` and `*_sleep_timer`
-show the charger's own settings, read on every connection. The firmware and
-hardware versions show on the device page.
+The per-slot `sensor.*_error` (`none`, or the fault the charger
+reports: `reversed_polarity`, `wrong_battery_type`, `capacity_limit`, …) and
+the charger's own settings, which you can change from Home Assistant:
+`select.*_beep_volume`, `*_notification_volume` (off, low, medium, high),
+`*_end_notification` (once, repeat), `*_backlight` (low, medium, high),
+`*_sleep_timer` (off, 1 to 120 min) and `switch.*_warning_tone`. They are
+read when the connection opens, written back all at once and checked by
+reading them again. The firmware and hardware versions show on the device
+page.
+
+The MC5000 reports a slot's temperature only when an external probe is
+plugged in, so `sensor.*_temperature` is created but disabled by default.
 
 The status of a slot is one of `empty`, `idle`, `standby`, `charging`,
 `discharging`, `resting`, `done` or `error`. Battery type, mode, current,

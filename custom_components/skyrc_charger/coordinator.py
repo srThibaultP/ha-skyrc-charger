@@ -7,6 +7,7 @@ import time
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -395,6 +396,19 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
     # Polling
     # ------------------------------------------------------------------
+
+    @property
+    def supports_settings(self) -> bool:
+        return CLIENT_BY_MODEL[self.model].supports_settings
+
+    async def async_set_charger_settings(self, **changes) -> None:
+        """Write some of the charger's own settings, then tell the entities."""
+        charger = await self.async_connected_charger()
+        try:
+            await charger.async_set_settings(**changes)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+        self.async_update_listeners()
 
     async def async_set_passcode(self, passcode: str) -> None:
         """Adopt a new passcode and reconnect so the charger sees it."""

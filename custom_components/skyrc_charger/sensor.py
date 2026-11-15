@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
-from homeassistant.const import UnitOfElectricCurrent, UnitOfElectricPotential
+from homeassistant.const import UnitOfElectricCurrent, UnitOfElectricPotential, UnitOfTemperature
 from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN, MODEL_MC5000
@@ -24,6 +24,7 @@ class SkyrcSensorDescription:
     value_fn: Callable[[Any], Any] = lambda _: None
     # Models the sensor exists on; None means every model.
     models: tuple[str, ...] | None = None
+    enabled_default: bool = True
 
 
 def _format_seconds(value: Any) -> str | None:
@@ -76,6 +77,18 @@ CHANNEL_SENSORS: tuple[SkyrcSensorDescription, ...] = (
         value_fn=lambda ch: ch.capacity,
     ),
     SkyrcSensorDescription(
+        "temperature",
+        "Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda ch: ch.temperature,
+        # The MC5000 only knows a slot's temperature when an external probe is
+        # plugged in; without one it reports 0, which stays "unknown".
+        enabled_default=False,
+        models=(MODEL_MC5000,),
+    ),
+    SkyrcSensorDescription(
         "resistance",
         "Internal Resistance",
         native_unit_of_measurement="mΩ",
@@ -98,57 +111,7 @@ CHANNEL_SENSORS: tuple[SkyrcSensorDescription, ...] = (
     ),
 )
 
-DEVICE_SENSORS: tuple[SkyrcSensorDescription, ...] = (
-    SkyrcSensorDescription(
-        "beep_volume",
-        "Beep Volume",
-        icon="mdi:volume-high",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda dev: dev.beep_volume,
-        models=(MODEL_MC5000,),
-    ),
-    SkyrcSensorDescription(
-        "notification_volume",
-        "Notification Volume",
-        icon="mdi:bell-ring-outline",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda dev: dev.notification_volume,
-        models=(MODEL_MC5000,),
-    ),
-    SkyrcSensorDescription(
-        "end_notification",
-        "End Notification",
-        icon="mdi:bell-check-outline",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda dev: dev.end_notification,
-        models=(MODEL_MC5000,),
-    ),
-    SkyrcSensorDescription(
-        "backlight",
-        "Backlight",
-        icon="mdi:brightness-6",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda dev: dev.backlight,
-        models=(MODEL_MC5000,),
-    ),
-    SkyrcSensorDescription(
-        "warning_tone",
-        "Warning Tone",
-        icon="mdi:alert-octagon-outline",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda dev: dev.warning_tone,
-        models=(MODEL_MC5000,),
-    ),
-    SkyrcSensorDescription(
-        "sleep_timer",
-        "Sleep Timer",
-        native_unit_of_measurement="min",
-        icon="mdi:sleep",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda dev: dev.sleep_timer_minutes,
-        models=(MODEL_MC5000,),
-    ),
-)
+DEVICE_SENSORS: tuple[SkyrcSensorDescription, ...] = (SkyrcSensorDescription(),)
 
 
 def _for_model(descriptions, model: str):
@@ -185,6 +148,7 @@ class SkyrcBaseSensor(SkyrcEntity, SensorEntity):
         self._attr_state_class = description.state_class
         self._attr_icon = description.icon
         self._attr_entity_category = description.entity_category
+        self._attr_entity_registry_enabled_default = description.enabled_default
         if description.key == "voltage":
             self._attr_suggested_display_precision = 3
 

@@ -256,9 +256,67 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(payload[0], 0x04)  # slot 3 as a bitmask
         self.assertEqual(int.from_bytes(payload[2:4], "big"), 800)
         self.assertEqual(int.from_bytes(payload[6:8], "big"), 2000)
-        self.assertEqual(payload[26], 71)  # temperature cut-off, app default
+        self.assertEqual(payload[26], 60)  # temperature cut-off, app default
         self.assertEqual(payload[31], 0)  # turbo off
         self.assertEqual(payload[32], 0x05)
+
+
+class ProgramDefaultsTest(unittest.TestCase):
+    """Defaults and limits taken from the SkyRC app's own tables."""
+
+    def _payload(self, chemistry: str, mode: str = "charge", **kwargs) -> bytes:
+        return _client()._build_config_payload(0, chemistry=chemistry, mode=mode, **kwargs)
+
+    def test_voltages_default_to_the_apps_per_chemistry_values(self) -> None:
+        for chemistry, target, cutoff, storage in (
+            ("liion", 4200, 3200, 3800),
+            ("liion_hv", 4350, 3400, 3900),
+            ("lifepo4", 3650, 2900, 3300),
+            ("nimh", 1650, 900, 3300),
+            ("nizn", 1900, 1100, 3300),
+            ("lto", 2850, 1800, 2400),
+            ("naion", 4000, 2000, 3500),
+        ):
+            payload = self._payload(chemistry)
+            self.assertEqual(int.from_bytes(payload[8:10], "big"), target, chemistry)
+            self.assertEqual(int.from_bytes(payload[10:12], "big"), cutoff, chemistry)
+            self.assertEqual(int.from_bytes(payload[33:35], "big"), storage, chemistry)
+
+    def test_currents_and_capacity_default_per_chemistry(self) -> None:
+        def currents(payload: bytes) -> tuple[int, int, int]:
+            return tuple(int.from_bytes(payload[i : i + 2], "big") for i in (6, 2, 4))
+
+        self.assertEqual(currents(self._payload("liion")), (3000, 3000, 2000))
+        self.assertEqual(currents(self._payload("nimh")), (3000, 1000, 1000))
+        self.assertEqual(currents(self._payload("naion")), (5000, 2000, 2000))
+        self.assertEqual(currents(self._payload("nimh", "break_in")), (3000, 300, 600))
+
+    def test_eneloop_defaults_follow_the_cell_type(self) -> None:
+        payload = self._payload("eneloop", eneloop_type=1)
+
+        self.assertEqual(int.from_bytes(payload[6:8], "big"), 800)
+        self.assertEqual(int.from_bytes(payload[2:4], "big"), 400)
+        self.assertEqual(payload[35], 1)
+
+    def test_a_voltage_outside_the_apps_range_is_refused(self) -> None:
+        for chemistry, name, value in (
+            ("liion", "target_mv", 4300),
+            ("lifepo4", "target_mv", 4200),
+            ("nimh", "target_mv", 1900),
+            ("liion", "cutoff_mv", 2000),
+            ("liion", "storage_mv", 4000),
+        ):
+            with self.assertRaises(ValueError, msg=f"{chemistry} {name}"):
+                self._payload(chemistry, **{name: value})
+
+    def test_the_edges_of_the_range_are_accepted(self) -> None:
+        self._payload("liion", target_mv=4050)
+        self._payload("liion", target_mv=4250)
+        self._payload("lifepo4", target_mv=3700)
+
+    def test_an_unknown_eneloop_type_is_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            self._payload("eneloop", eneloop_type=9)
 
 
 class StartStopTest(unittest.IsolatedAsyncioTestCase):
@@ -460,6 +518,94 @@ class VoltageCurveTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client._notify_queue.get_nowait(), bytes.fromhex("0f0406010108"))
         self.assertEqual(client._notify_queue.get_nowait(), CURVE_PAGES[2])
         self.assertTrue(client._notify_queue.empty())
+
+
+def _settings_frame(values: list[int]) -> bytes:
+    body = bytes([0x96, 0x10, *values])
+    return bytes([0x0F, len(body) + 1]) + body + bytes([sum(body) & 0xFF])
+
+
+class SettingsTest(unittest.IsolatedAsyncioTestCase):
+    """Writing the charger's settings, with a charger that drops a command."""
+
+    async def asyncSetUp(self) -> None:
+        mc5000.SETTINGS_SETTLE_SECONDS = 0
+        mc5000.SETTINGS_ANSWER_SECONDS = 0.05
+        self.client = _client()
+        await _connect(self.client)
+        self.client._client.writes.clear()
+        # beep, notification, end notification, backlight, warning, sleep
+        self.state = [0, 1, 0, 1, 1, 0]
+        self.drop_next_write = False
+        self.fake = self.client._client
+
+        async def write(_char, data, response=False):
+            self.fake.writes.append(bytes(data))
+            command = data[2]
+            if command == mc5000.CMD_QUERY_SYSTEM:
+                self.client._notify_queue.put_nowait(_settings_frame(self.state))
+            elif command == mc5000.CMD_WRITE_SYSTEM:
+                if self.drop_next_write:
+                    self.drop_next_write = False
+                    return
+                self.state = list(data[4:10])
+                self.client._notify_queue.put_nowait(bytes.fromhex("0f04951001a6"))
+
+        self.fake.write_gatt_char = write
+
+    async def test_only_the_asked_setting_changes(self) -> None:
+        await self.client.async_set_settings(backlight="high")
+
+        writes = [w for w in self.fake.writes if w[2] == mc5000.CMD_WRITE_SYSTEM]
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(self.state, [0, 1, 0, 3, 1, 0])
+        self.assertEqual(len(writes[0]), 21)  # 17 data bytes + header + checksum
+        self.assertEqual(self.client._device_info.backlight, "high")
+
+    async def test_every_setting_has_its_own_byte(self) -> None:
+        await self.client.async_set_settings(
+            beep_volume="high",
+            notification_volume="off",
+            end_notification="repeat",
+            warning_tone=False,
+            sleep_timer_minutes=15,
+        )
+
+        self.assertEqual(self.state, [3, 0, 1, 1, 0, 15])
+
+    async def test_a_dropped_write_is_retried_and_checked(self) -> None:
+        self.drop_next_write = True
+
+        await self.client.async_set_settings(backlight="medium")
+
+        writes = [w for w in self.fake.writes if w[2] == mc5000.CMD_WRITE_SYSTEM]
+        self.assertEqual(len(writes), 2)
+        self.assertEqual(self.state[3], 2)
+
+    async def test_a_setting_that_never_sticks_raises(self) -> None:
+        async def deaf(_char, data, response=False):
+            self.fake.writes.append(bytes(data))
+            if data[2] == mc5000.CMD_QUERY_SYSTEM:
+                self.client._notify_queue.put_nowait(_settings_frame(self.state))
+            else:
+                # Acknowledges the write without applying it.
+                self.client._notify_queue.put_nowait(bytes.fromhex("0f04951001a6"))
+
+        self.fake.write_gatt_char = deaf
+
+        with self.assertRaises(mc5000.BleakError):
+            await self.client.async_set_settings(backlight="high")
+
+    async def test_unknown_values_are_refused_before_any_write(self) -> None:
+        for changes in (
+            {"backlight": "blinding"},
+            {"sleep_timer_minutes": 7},
+            {"volume": "high"},
+        ):
+            with self.assertRaises(ValueError):
+                await self.client.async_set_settings(**changes)
+
+        self.assertEqual(self.fake.writes, [])
 
 
 if __name__ == "__main__":

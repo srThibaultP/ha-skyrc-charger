@@ -15,12 +15,15 @@ Commands used here:
     0x91  slot status, one slot per request (slot bitmask)
     0x94  write a slot program; the charger starts it right away
     0x96  read the system settings (beeps, backlight, sleep timer)
+    0x95  write them back, all at once; answers 1 when it took them
     0x98  read a slot's logged voltage curve, sent back in several pages
     0xFE  stop the slots in the given bitmask
 
-An earlier community write-up treated 0x93 as start/stop. In the app 0x93
-only reads back a slot's settings, and nothing ever sends it to start or
-stop, so this driver no longer does either.
+In the app 0x93 only reads back a slot's settings. Starting a slot is the
+0x94 write and stopping it is 0xFE.
+
+The voltage ranges and the default capacity and currents are the tables of
+the app (Constant.java and Nc3000SetBean).
 """
 
 from __future__ import annotations
@@ -58,6 +61,7 @@ CMD_STATUS = 0x91
 CMD_QUERY_SLOT_SETTINGS = 0x93
 CMD_CONFIG = 0x94
 CMD_QUERY_SYSTEM = 0x96
+CMD_WRITE_SYSTEM = 0x95
 CMD_VOLTAGE_CURVE = 0x98
 CMD_STOP = 0xFE
 
@@ -102,42 +106,135 @@ MODES_BY_CHEMISTRY = {
     "ram": ZINC_MODES,
 }
 
-# target / cutoff voltage (mV) per chemistry, used to build a sane default
-# 0x94 config when the caller doesn't override them.
-DEFAULT_TARGET_MV = {
-    "liion": 4200,
-    "liion_hv": 4350,
-    "lifepo4": 3650,
-    "nimh": 1650,
-    "nicd": 1650,
-    "eneloop": 1650,
-    "nizn": 1900,
-    "ram": 1650,
-    "lto": 2850,
-    "naion": 4000,
-}
-DEFAULT_CUTOFF_MV = {
-    "liion": 3200,
-    "liion_hv": 3400,
-    "lifepo4": 2900,
-    "nimh": 900,
-    "nicd": 900,
-    "eneloop": 900,
-    "nizn": 1100,
-    "ram": 900,
-    "lto": 1800,
-    "naion": 2000,
-}
+# Voltage tables of the app (Constant.java), in mV, in the order of the
+# chemistry byte: Li-ion, Li-ion HV, LiFePO4, NiMH, NiCd, Eneloop, NiZn, RAM,
+# LTO, Na-ion. Each is (minimum, default, maximum) as the app offers them.
+_CHEMISTRY_ORDER = (
+    "liion",
+    "liion_hv",
+    "lifepo4",
+    "nimh",
+    "nicd",
+    "eneloop",
+    "nizn",
+    "ram",
+    "lto",
+    "naion",
+)
 
-# default "secondary" field (data[33-34]): storage voltage (mV) for
-# lithium-class chemistries, else 110% of capacity (mAh) for nickel/alkaline
-DEFAULT_SECONDARY_MV = {
-    "liion": 3800,
-    "liion_hv": 3900,
-    "lifepo4": 3300,
-    "lto": 2400,
-    "naion": 3500,
+
+def _by_chemistry(values) -> dict[str, tuple[int, int, int]]:
+    return dict(zip(_CHEMISTRY_ORDER, values, strict=True))
+
+
+CHARGE_VOLTAGE_MV = _by_chemistry(
+    [
+        (4050, 4200, 4250),
+        (4250, 4350, 4400),
+        (3580, 3650, 3700),
+        (1470, 1650, 1800),
+        (1470, 1650, 1800),
+        (1470, 1650, 1800),
+        (1200, 1900, 2000),
+        (1400, 1650, 1700),
+        (2600, 2850, 2900),
+        (3200, 4000, 4150),
+    ]
+)
+DISCHARGE_VOLTAGE_MV = _by_chemistry(
+    [
+        (2500, 3200, 3300),
+        (2600, 3400, 3800),
+        (2600, 2900, 3000),
+        (600, 900, 1000),
+        (600, 900, 1000),
+        (600, 900, 1000),
+        (900, 1100, 1600),
+        (500, 900, 1300),
+        (1500, 1800, 2300),
+        (1500, 2000, 3500),
+    ]
+)
+STORAGE_VOLTAGE_MV = _by_chemistry(
+    [
+        (3700, 3800, 3850),
+        (3850, 3900, 3950),
+        (3250, 3300, 3400),
+        (3250, 3300, 3400),
+        (3250, 3300, 3400),
+        (3250, 3300, 3400),
+        (3250, 3300, 3400),
+        (3250, 3300, 3400),
+        (2250, 2400, 2650),
+        (3400, 3500, 3600),
+    ]
+)
+
+# Default capacity (mAh), charge and discharge current (mA) the app proposes
+# when a chemistry is picked (Nc3000SetBean.setNc3000SetBean).
+_LITHIUM_DEFAULTS = (3000, 3000, 2000)
+PROGRAM_DEFAULTS = {
+    "liion": _LITHIUM_DEFAULTS,
+    "liion_hv": _LITHIUM_DEFAULTS,
+    "lifepo4": _LITHIUM_DEFAULTS,
+    "nimh": (3000, 1000, 1000),
+    "nicd": (3000, 1000, 1000),
+    "nizn": (3000, 1000, 1000),
+    "ram": (3000, 1000, 1000),
+    "lto": (3000, 1000, 1000),
+    "naion": (5000, 2000, 2000),
 }
+# NiMH and NiCd break-in is gentler.
+BREAK_IN_DEFAULTS = (3000, 300, 600)
+
+# Eneloop cells, by the app's "type" index: (capacity, charge, discharge) for a
+# normal run, and for a break-in.
+ENELOOP_DEFAULTS = (
+    (2000, 1000, 500),
+    (800, 400, 200),
+    (2500, 1250, 600),
+    (900, 450, 200),
+    (1000, 500, 250),
+    (600, 300, 150),
+    (2200, 1100, 550),
+    (3200, 1600, 800),
+    (6000, 3000, 1500),
+)
+ENELOOP_BREAK_IN_DEFAULTS = (
+    (2000, 200, 400),
+    (800, 50, 100),
+    (2500, 250, 500),
+    (900, 50, 100),
+    (1000, 100, 200),
+    (600, 50, 100),
+    (2200, 200, 400),
+    (3200, 300, 600),
+    (6000, 600, 1200),
+)
+
+# The app's own defaults for everything else in the program.
+DEFAULT_CUTOFF_MA = 100
+DEFAULT_REST_MINUTES = 10
+DEFAULT_DELTA_PEAK_MV = 6
+DEFAULT_TEMPERATURE_CUTOFF_C = 60
+
+
+def program_defaults(chemistry: str, mode: str, eneloop_type: int = 0) -> tuple[int, int, int]:
+    """Capacity, charge and discharge current the app proposes for a program."""
+    if chemistry == "eneloop":
+        table = ENELOOP_BREAK_IN_DEFAULTS if mode == "break_in" else ENELOOP_DEFAULTS
+        return table[eneloop_type]
+    if chemistry in ("nimh", "nicd") and mode == "break_in":
+        return BREAK_IN_DEFAULTS
+    return PROGRAM_DEFAULTS[chemistry]
+
+
+def _check_range(name: str, value: int, limits: tuple[int, int, int]) -> int:
+    low, _default, high = limits
+    if not low <= value <= high:
+        raise ValueError(f"{name} must be between {low} and {high} mV for this chemistry")
+    return value
+
 
 # Byte 18 of the 0x91 answer, as the app labels it.
 STATUS_BYTE_NAME = {
@@ -171,6 +268,21 @@ ERROR_BYTE_NAME = {
 VOLUME_NAME = {0: "off", 1: "low", 2: "medium", 3: "high"}
 END_NOTIFICATION_NAME = {0: "once", 1: "repeat"}
 BACKLIGHT_NAME = {1: "low", 2: "medium", 3: "high"}
+# Sleep timer steps the app offers, in minutes; 0 is "off".
+SLEEP_TIMER_MINUTES = (0, 1, 3, 5, 10, 15, 30, 60, 120)
+
+SETTING_OPTIONS = {
+    "beep_volume": tuple(VOLUME_NAME.values()),
+    "notification_volume": tuple(VOLUME_NAME.values()),
+    "end_notification": tuple(END_NOTIFICATION_NAME.values()),
+    "backlight": tuple(BACKLIGHT_NAME.values()),
+}
+
+# The charger sometimes drops the command that follows a write; settle, then
+# read back to know whether it was applied.
+SETTINGS_ATTEMPTS = 3
+SETTINGS_SETTLE_SECONDS = 0.5
+SETTINGS_ANSWER_SECONDS = 3.0
 
 CHANNEL_BITMASK = [0x01, 0x02, 0x04, 0x08]  # index -> bitmask, 4 slots
 
@@ -223,6 +335,7 @@ def _u16(value: int) -> bytes:
 class Mc5000Client(ChargerClient):
     channel_count = 4
     supports_voltage_curves = True
+    supports_settings = True
 
     def __init__(self, ble_device) -> None:
         self._device = ble_device
@@ -496,6 +609,79 @@ class Mc5000Client(ChargerClient):
         self._apply_system_settings(self._device_info, resp)
 
     @staticmethod
+    def _settings_bytes(device: DeviceData) -> bytes:
+        """The six setting bytes of 0x95, in the order 0x96 reports them."""
+
+        def index(names: dict[int, str], value: str | None, default: int) -> int:
+            for byte, name in names.items():
+                if name == value:
+                    return byte
+            return default
+
+        return bytes(
+            [
+                index(VOLUME_NAME, device.beep_volume, 0),
+                index(VOLUME_NAME, device.notification_volume, 1),
+                index(END_NOTIFICATION_NAME, device.end_notification, 0),
+                index(BACKLIGHT_NAME, device.backlight, 1),
+                1 if device.warning_tone else 0,
+                device.sleep_timer_minutes or 0,
+            ]
+        )
+
+    async def async_set_settings(self, **changes) -> None:
+        """Change some of the charger's settings and check they stuck.
+
+        0x95 writes all of them at once, so start from what the charger
+        reports now, change only what was asked, write, then read back.
+        Accepted keys: beep_volume, notification_volume, end_notification,
+        backlight (names as the sensors report them), warning_tone (bool)
+        and sleep_timer_minutes (one of SLEEP_TIMER_MINUTES).
+        """
+        for key, value in changes.items():
+            if key in SETTING_OPTIONS:
+                if value not in SETTING_OPTIONS[key]:
+                    raise ValueError(f"{key} must be one of {', '.join(SETTING_OPTIONS[key])}")
+            elif key == "sleep_timer_minutes":
+                if value not in SLEEP_TIMER_MINUTES:
+                    raise ValueError(f"sleep_timer_minutes must be one of {SLEEP_TIMER_MINUTES}")
+            elif key != "warning_tone":
+                raise ValueError(f"Unknown MC5000 setting {key!r}")
+
+        current = DeviceData()
+        for _ in range(SETTINGS_ATTEMPTS):
+            self._apply_system_settings(current, await self._request(CMD_QUERY_SYSTEM, b"\x04"))
+            if current.beep_volume is not None:
+                break
+        else:
+            raise BleakError("MC5000 did not report its settings")
+
+        wanted = DeviceData(**{**current.__dict__, **changes})
+        payload = bytes([0x00]) + self._settings_bytes(wanted) + bytes(10)
+
+        for _ in range(SETTINGS_ATTEMPTS):
+            await self._request(CMD_WRITE_SYSTEM, payload, timeout=SETTINGS_ANSWER_SECONDS)
+            await asyncio.sleep(SETTINGS_SETTLE_SECONDS)
+
+            applied = DeviceData()
+            self._apply_system_settings(applied, await self._request(CMD_QUERY_SYSTEM, b"\x04"))
+            if applied.beep_volume is not None and self._settings_bytes(
+                applied
+            ) == self._settings_bytes(wanted):
+                for field in (
+                    "beep_volume",
+                    "notification_volume",
+                    "end_notification",
+                    "backlight",
+                    "warning_tone",
+                    "sleep_timer_minutes",
+                ):
+                    setattr(self._device_info, field, getattr(applied, field))
+                return
+
+        raise BleakError("The MC5000 did not apply the new settings")
+
+    @staticmethod
     def _parse_channel(index: int, packet: bytes) -> ChannelData:
         """Decode one 0x91 answer (the full packet, start byte included).
 
@@ -641,31 +827,48 @@ class Mc5000Client(ChargerClient):
                 "or set the slot's expected chemistry"
             )
         mode = kwargs.get("mode") or "charge"
-        charge_current = int(kwargs.get("current", 1000))
-        discharge_current = int(kwargs.get("discharge_current", charge_current))
-        capacity = int(kwargs.get("capacity", 3000))
-        target_mv = int(kwargs.get("target_mv", DEFAULT_TARGET_MV.get(chemistry, 4200)))
-        cutoff_mv = int(kwargs.get("cutoff_mv", DEFAULT_CUTOFF_MV.get(chemistry, 3200)))
-        charge_cutoff_ma = int(kwargs.get("charge_cutoff_ma", 100))
-        discharge_cutoff_ma = int(kwargs.get("discharge_cutoff_ma", 100))
-        delta_peak_mv = int(kwargs.get("delta_peak_mv", 6))
+        mode_value = mode_byte(chemistry, mode)
+
+        eneloop_type = int(kwargs.get("eneloop_type", 0))
+        if chemistry == "eneloop" and not 0 <= eneloop_type < len(ENELOOP_DEFAULTS):
+            raise ValueError(f"eneloop_type must be between 0 and {len(ENELOOP_DEFAULTS) - 1}")
+        default_capacity, default_charge, default_discharge = program_defaults(
+            chemistry, mode, eneloop_type
+        )
+
+        charge_current = int(kwargs.get("current", default_charge))
+        discharge_current = int(kwargs.get("discharge_current", default_discharge))
+        capacity = int(kwargs.get("capacity", default_capacity))
+        target_mv = _check_range(
+            "target_mv",
+            int(kwargs.get("target_mv", CHARGE_VOLTAGE_MV[chemistry][1])),
+            CHARGE_VOLTAGE_MV[chemistry],
+        )
+        cutoff_mv = _check_range(
+            "cutoff_mv",
+            int(kwargs.get("cutoff_mv", DISCHARGE_VOLTAGE_MV[chemistry][1])),
+            DISCHARGE_VOLTAGE_MV[chemistry],
+        )
+        # Byte 33-34 is the storage voltage for every chemistry.
+        storage_mv = _check_range(
+            "storage_mv",
+            int(kwargs.get("storage_mv", STORAGE_VOLTAGE_MV[chemistry][1])),
+            STORAGE_VOLTAGE_MV[chemistry],
+        )
+        charge_cutoff_ma = int(kwargs.get("charge_cutoff_ma", DEFAULT_CUTOFF_MA))
+        discharge_cutoff_ma = int(kwargs.get("discharge_cutoff_ma", DEFAULT_CUTOFF_MA))
+        delta_peak_mv = int(kwargs.get("delta_peak_mv", DEFAULT_DELTA_PEAK_MV))
         trickle_x10 = int(kwargs.get("trickle_ma", 0)) // 10
         keep_mv = int(kwargs.get("keep_mv", 0))
         cutoff_timer_min = int(kwargs.get("cutoff_timer_min", 0))
-        temperature_cutoff_c = int(kwargs.get("temperature_cutoff_c", 71))
-        chem_byte = CHEMISTRY_TO_BYTE.get(chemistry, 0x00)
-        if "secondary" in kwargs:
-            secondary = int(kwargs["secondary"])
-        elif chemistry in DEFAULT_SECONDARY_MV:
-            secondary = DEFAULT_SECONDARY_MV[chemistry]
-        else:
-            secondary = int(capacity * 1.1)
-        charge_rest_min = int(kwargs.get("charge_rest_min", 10))
-        discharge_rest_min = int(kwargs.get("discharge_rest_min", 10))
+        temperature_cutoff_c = int(kwargs.get("temperature_cutoff_c", DEFAULT_TEMPERATURE_CUTOFF_C))
+        chem_byte = CHEMISTRY_TO_BYTE[chemistry]
+        charge_rest_min = int(kwargs.get("charge_rest_min", DEFAULT_REST_MINUTES))
+        discharge_rest_min = int(kwargs.get("discharge_rest_min", DEFAULT_REST_MINUTES))
 
         data = bytearray(40)
         data[0] = CHANNEL_BITMASK[channel] if channel is not None else 0x00
-        data[1] = mode_byte(chemistry, mode)
+        data[1] = mode_value
         data[2:4] = _u16(charge_current)
         data[4:6] = _u16(discharge_current)
         data[6:8] = _u16(capacity)
@@ -680,12 +883,12 @@ class Mc5000Client(ChargerClient):
         data[22] = delta_peak_mv
         data[23] = trickle_x10
         data[24:26] = _u16(keep_mv)
-        data[26] = temperature_cutoff_c  # the app sends 71 by default
+        data[26] = temperature_cutoff_c  # 0 would make the app send 71
         data[27:29] = _u16(cutoff_timer_min)  # safety timer, minutes
         # data[29:31] turbo charge capacity and data[31] turbo mode stay off
         data[32] = chem_byte
-        data[33:35] = _u16(secondary)
-        data[35] = int(kwargs.get("eneloop_type", 0))
+        data[33:35] = _u16(storage_mv)
+        data[35] = eneloop_type
         # data[36:40] padding stays zero
         return bytes(data)
 
