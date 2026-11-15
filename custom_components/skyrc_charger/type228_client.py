@@ -22,22 +22,15 @@ from bleak.exc import BleakError
 
 from .mc5000_client import CMD_STATUS_228, ERROR_BYTE_NAME, STATUS_BYTE_NAME, Mc5000Client
 from .models import ChannelData, ChargerState
+from .nc3000_client import MODE_BYTE_NAME as NC3000_MODE_BYTE_NAME
 
 TYPE228_MODEL_CODE = b"100228"
 SLOT_COUNT = 8
 SLOT_BLOCK = 17
 FRAME_LENGTH = 5 + SLOT_COUNT * SLOT_BLOCK + 1
 
-# Byte 15 of a slot block.
-MODE_BYTE_NAME = {
-    0: "charge",
-    1: "discharge",
-    2: "break_in",
-    3: "cycle",
-    4: "max_boost",
-    5: "turbo",
-    6: "three_stage_charge",
-}
+# Byte 15 of a slot block: the NC3000's modes, and a three-stage charge.
+MODE_BYTE_NAME = {**NC3000_MODE_BYTE_NAME, 6: "three_stage_charge"}
 
 
 class Type228Client(Mc5000Client):
