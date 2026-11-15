@@ -9,8 +9,38 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-# Pyflakes and pycodestyle for now. Widen to the rules of the other
-# integrations (import order, pyupgrade, bugbear...) together with a
-# ruff format pass, once the open pull requests are merged.
-select = ["E", "F"]
-ignore = ["E501"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ASYNC"]
+# Long lines are left to the formatter, as in Home Assistant core
+ignore = [
+    "E501",
+    # The BLE request helpers take a per-call timeout on purpose
+    "ASYNC109",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Home Assistant declares entity and flow attributes as class variables
+"custom_components/*" = ["RUF012"]
+# A test helper yields to the event loop until the client has written
+"tests/*" = ["ASYNC110"]
+
+[tool.ruff.lint.isort]
+# Same import order as Home Assistant core
+force-sort-within-sections = true
+combine-as-imports = true
+known-first-party = ["homeassistant"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["custom_components/skyrc_charger"]
+# Home Assistant and the BLE libraries are not installed in CI: the tests stub
+# them. Check the annotated code, leave the untyped functions alone.
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+# ConfigFlow comes from Home Assistant, which is not installed here, so
+# `class ConfigFlow(..., domain=DOMAIN)` looks like a bad keyword to mypy
+module = ["custom_components.skyrc_charger.config_flow"]
+disable_error_code = ["call-arg"]

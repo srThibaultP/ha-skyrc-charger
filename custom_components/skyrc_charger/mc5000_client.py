@@ -26,6 +26,7 @@ stop, so this driver no longer does either.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 
 from bleak import BleakClient
@@ -104,20 +105,38 @@ MODES_BY_CHEMISTRY = {
 # target / cutoff voltage (mV) per chemistry, used to build a sane default
 # 0x94 config when the caller doesn't override them.
 DEFAULT_TARGET_MV = {
-    "liion": 4200, "liion_hv": 4350, "lifepo4": 3650, "nimh": 1650,
-    "nicd": 1650, "eneloop": 1650, "nizn": 1900, "ram": 1650,
-    "lto": 2850, "naion": 4000,
+    "liion": 4200,
+    "liion_hv": 4350,
+    "lifepo4": 3650,
+    "nimh": 1650,
+    "nicd": 1650,
+    "eneloop": 1650,
+    "nizn": 1900,
+    "ram": 1650,
+    "lto": 2850,
+    "naion": 4000,
 }
 DEFAULT_CUTOFF_MV = {
-    "liion": 3200, "liion_hv": 3400, "lifepo4": 2900, "nimh": 900,
-    "nicd": 900, "eneloop": 900, "nizn": 1100, "ram": 900,
-    "lto": 1800, "naion": 2000,
+    "liion": 3200,
+    "liion_hv": 3400,
+    "lifepo4": 2900,
+    "nimh": 900,
+    "nicd": 900,
+    "eneloop": 900,
+    "nizn": 1100,
+    "ram": 900,
+    "lto": 1800,
+    "naion": 2000,
 }
 
 # default "secondary" field (data[33-34]): storage voltage (mV) for
 # lithium-class chemistries, else 110% of capacity (mAh) for nickel/alkaline
 DEFAULT_SECONDARY_MV = {
-    "liion": 3800, "liion_hv": 3900, "lifepo4": 3300, "lto": 2400, "naion": 3500,
+    "liion": 3800,
+    "liion_hv": 3900,
+    "lifepo4": 3300,
+    "lto": 2400,
+    "naion": 3500,
 }
 
 # Byte 18 of the 0x91 answer, as the app labels it.
@@ -163,8 +182,7 @@ def mode_byte(chemistry: str, mode: str) -> int:
         raise ValueError(f"Unknown MC5000 chemistry {chemistry!r}")
     if mode not in modes:
         raise ValueError(
-            f"Mode {mode!r} is not available for {chemistry}; "
-            f"choose one of {', '.join(modes)}"
+            f"Mode {mode!r} is not available for {chemistry}; choose one of {', '.join(modes)}"
         )
     return modes[mode]
 
@@ -238,9 +256,7 @@ class Mc5000Client(ChargerClient):
         self._passcode = passcode
 
     async def _unlock(self) -> None:
-        resp = await self._request(
-            CMD_VERIFY_PASSWORD, b"\x00" + passcode_bytes(self._passcode)
-        )
+        resp = await self._request(CMD_VERIFY_PASSWORD, b"\x00" + passcode_bytes(self._passcode))
         if resp is None or len(resp) < 5:
             self.unlocked = None
             return
@@ -321,10 +337,8 @@ class Mc5000Client(ChargerClient):
                 self._connected = True
 
                 # Drain the unsolicited greeting (0x06) if/when it arrives.
-                try:
+                with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self._notify_queue.get(), timeout=2.0)
-                except asyncio.TimeoutError:
-                    pass
 
                 # Same opening as the app: identify the charger, unlock it
                 # with its passcode, decline the firmware update.
@@ -343,7 +357,7 @@ class Mc5000Client(ChargerClient):
                 self._client = None
                 try:
                     await client.disconnect()
-                except Exception as err:  # noqa: BLE001
+                except Exception as err:
                     _LOGGER.debug("MC5000: cleanup disconnect failed: %r", err)
                 raise
 
@@ -353,7 +367,7 @@ class Mc5000Client(ChargerClient):
         if client is not None:
             try:
                 await client.disconnect()
-            except Exception as err:  # noqa: BLE001
+            except Exception as err:
                 _LOGGER.debug("MC5000 disconnect error: %r", err)
 
     async def _send(
@@ -379,7 +393,7 @@ class Mc5000Client(ChargerClient):
 
         try:
             return await asyncio.wait_for(self._notify_queue.get(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Happens on every poll while the charger is asleep; the
             # coordinator reports the resulting stale data once, not 360
             # times an hour.
@@ -402,7 +416,7 @@ class Mc5000Client(ChargerClient):
             _LOGGER.debug("MC5000: skipping unrelated notification %s", resp.hex())
             try:
                 resp = await asyncio.wait_for(self._notify_queue.get(), timeout=timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return None
         return None
 
@@ -453,9 +467,11 @@ class Mc5000Client(ChargerClient):
             resp = await self._request(CMD_INFO, request, timeout=INFO_TIMEOUT)
             if resp is not None:
                 break
+        if resp is None:
+            return None
         try:
             return self._parse_device_info(resp, addr)
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             _LOGGER.debug("MC5000: could not parse device info: %r", err)
             return None
 
@@ -521,9 +537,7 @@ class Mc5000Client(ChargerClient):
             if chem_byte is not None
             else None
         )
-        error = (
-            ERROR_BYTE_NAME.get(error_byte, f"unknown_{error_byte}") if error_byte else None
-        )
+        error = ERROR_BYTE_NAME.get(error_byte, f"unknown_{error_byte}") if error_byte else None
 
         # Below 5 mV the app considers the slot empty.
         has_cell = voltage_mv >= 5
@@ -539,9 +553,7 @@ class Mc5000Client(ChargerClient):
         if not has_cell and not running:
             # Nothing in the slot: the chemistry and mode bytes still hold
             # the previous program, which says nothing about this state.
-            return ChannelData(
-                index=index, status=status, voltage=0.0, current=0.0, error=error
-            )
+            return ChannelData(index=index, status=status, voltage=0.0, current=0.0, error=error)
 
         return ChannelData(
             index=index,
@@ -609,7 +621,7 @@ class Mc5000Client(ChargerClient):
                 break
             try:
                 page = await asyncio.wait_for(self._notify_queue.get(), timeout=NOTIFY_TIMEOUT)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 checksum_ok = False
                 break
 

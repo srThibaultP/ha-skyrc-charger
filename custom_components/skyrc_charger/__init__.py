@@ -345,9 +345,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         check_slot(coordinator, slot)
 
         if not coordinator.supports_voltage_curves:
-            raise HomeAssistantError(
-                f"{coordinator.model.upper()} does not expose voltage curves"
-            )
+            raise HomeAssistantError(f"{coordinator.model.upper()} does not expose voltage curves")
 
         await coordinator.async_fetch_voltage_curve(slot - 1)
 
@@ -450,7 +448,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if charger is not None:
             try:
                 await charger.disconnect()
-            except Exception as err:  # noqa: BLE001
+            except Exception as err:
                 _LOGGER.debug("SkyRC %s: disconnect on unload failed: %r", coordinator.model, err)
 
     # Services and the log filter are integration-wide; drop them only once

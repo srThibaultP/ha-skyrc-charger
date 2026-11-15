@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.const import UnitOfElectricCurrent, UnitOfElectricPotential, UnitOfTemperature
@@ -40,18 +41,24 @@ def _format_seconds(value: Any) -> str | None:
 
 
 CHANNEL_SENSORS: tuple[SkyrcSensorDescription, ...] = (
-    SkyrcSensorDescription("status", "Status", icon="mdi:state-machine", value_fn=lambda ch: ch.status),
-    SkyrcSensorDescription("battery_type", "Battery Type", icon="mdi:battery", value_fn=lambda ch: ch.chemistry),
+    SkyrcSensorDescription(
+        "status", "Status", icon="mdi:state-machine", value_fn=lambda ch: ch.status
+    ),
+    SkyrcSensorDescription(
+        "battery_type", "Battery Type", icon="mdi:battery", value_fn=lambda ch: ch.chemistry
+    ),
     SkyrcSensorDescription("mode", "Mode", icon="mdi:battery-sync", value_fn=lambda ch: ch.mode),
     SkyrcSensorDescription(
-        "voltage", "Voltage",
+        "voltage",
+        "Voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda ch: ch.voltage,
     ),
     SkyrcSensorDescription(
-        "current", "Current",
+        "current",
+        "Current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -61,14 +68,16 @@ CHANNEL_SENSORS: tuple[SkyrcSensorDescription, ...] = (
         # MEASUREMENT, not TOTAL_INCREASING: the charger resets this counter
         # to zero at the start of every run, which a total-increasing sensor
         # would read as a meter rollover and add to the long-term statistic.
-        "capacity", "Capacity",
+        "capacity",
+        "Capacity",
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:battery-plus",
         value_fn=lambda ch: ch.capacity,
     ),
     SkyrcSensorDescription(
-        "temperature", "Temperature",
+        "temperature",
+        "Temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -76,24 +85,31 @@ CHANNEL_SENSORS: tuple[SkyrcSensorDescription, ...] = (
         models=(MODEL_MC3000,),
     ),
     SkyrcSensorDescription(
-        "resistance", "Internal Resistance",
+        "resistance",
+        "Internal Resistance",
         native_unit_of_measurement="mΩ",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:omega",
         value_fn=lambda ch: ch.resistance,
     ),
     SkyrcSensorDescription(
-        "time", "Elapsed Time", icon="mdi:timer-outline",
+        "time",
+        "Elapsed Time",
+        icon="mdi:timer-outline",
         value_fn=lambda ch: _format_seconds(ch.time),
     ),
     SkyrcSensorDescription(
-        "cycle_count", "Cycle Count", icon="mdi:autorenew",
+        "cycle_count",
+        "Cycle Count",
+        icon="mdi:autorenew",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ch: ch.cycle_count,
         models=(MODEL_MC3000,),
     ),
     SkyrcSensorDescription(
-        "error", "Error", icon="mdi:alert-circle-outline",
+        "error",
+        "Error",
+        icon="mdi:alert-circle-outline",
         value_fn=lambda ch: ch.error or "none",
         models=(MODEL_MC5000,),
     ),
@@ -101,7 +117,8 @@ CHANNEL_SENSORS: tuple[SkyrcSensorDescription, ...] = (
 
 DEVICE_SENSORS: tuple[SkyrcSensorDescription, ...] = (
     SkyrcSensorDescription(
-        "input_voltage", "Input Voltage",
+        "input_voltage",
+        "Input Voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -109,68 +126,90 @@ DEVICE_SENSORS: tuple[SkyrcSensorDescription, ...] = (
         models=(MODEL_MC3000,),
     ),
     SkyrcSensorDescription(
-        "temperature_unit", "Temperature Unit", icon="mdi:temperature-celsius",
+        "temperature_unit",
+        "Temperature Unit",
+        icon="mdi:temperature-celsius",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.temperature_unit,
         models=(MODEL_MC3000,),
     ),
     SkyrcSensorDescription(
-        "display_mode", "Display Mode", icon="mdi:monitor",
+        "display_mode",
+        "Display Mode",
+        icon="mdi:monitor",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.display_mode,
         models=(MODEL_MC3000,),
     ),
     SkyrcSensorDescription(
-        "cooling_fan_mode", "Cooling Fan Mode", icon="mdi:fan",
+        "cooling_fan_mode",
+        "Cooling Fan Mode",
+        icon="mdi:fan",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.cooling_fan_mode,
         models=(MODEL_MC3000,),
     ),
     SkyrcSensorDescription(
-        "system_beep", "System Beep", icon="mdi:volume-high",
+        "system_beep",
+        "System Beep",
+        icon="mdi:volume-high",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.system_beep,
         models=(MODEL_MC3000,),
     ),
     SkyrcSensorDescription(
-        "screensaver", "Screensaver", icon="mdi:monitor-screenshot",
+        "screensaver",
+        "Screensaver",
+        icon="mdi:monitor-screenshot",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.screensaver,
         models=(MODEL_MC3000,),
     ),
     SkyrcSensorDescription(
-        "beep_volume", "Beep Volume", icon="mdi:volume-high",
+        "beep_volume",
+        "Beep Volume",
+        icon="mdi:volume-high",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.beep_volume,
         models=(MODEL_MC5000,),
     ),
     SkyrcSensorDescription(
-        "notification_volume", "Notification Volume", icon="mdi:bell-ring-outline",
+        "notification_volume",
+        "Notification Volume",
+        icon="mdi:bell-ring-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.notification_volume,
         models=(MODEL_MC5000,),
     ),
     SkyrcSensorDescription(
-        "end_notification", "End Notification", icon="mdi:bell-check-outline",
+        "end_notification",
+        "End Notification",
+        icon="mdi:bell-check-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.end_notification,
         models=(MODEL_MC5000,),
     ),
     SkyrcSensorDescription(
-        "backlight", "Backlight", icon="mdi:brightness-6",
+        "backlight",
+        "Backlight",
+        icon="mdi:brightness-6",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.backlight,
         models=(MODEL_MC5000,),
     ),
     SkyrcSensorDescription(
-        "warning_tone", "Warning Tone", icon="mdi:alert-octagon-outline",
+        "warning_tone",
+        "Warning Tone",
+        icon="mdi:alert-octagon-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.warning_tone,
         models=(MODEL_MC5000,),
     ),
     SkyrcSensorDescription(
-        "sleep_timer", "Sleep Timer",
-        native_unit_of_measurement="min", icon="mdi:sleep",
+        "sleep_timer",
+        "Sleep Timer",
+        native_unit_of_measurement="min",
+        icon="mdi:sleep",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.sleep_timer_minutes,
         models=(MODEL_MC5000,),

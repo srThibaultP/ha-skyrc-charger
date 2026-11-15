@@ -19,8 +19,8 @@ from .const import (
     DOMAIN,
     MODEL_MC3000,
     MODEL_MC5000,
-    MODELS,
     MODEL_NAMES,
+    MODELS,
     OPTION_PASSCODE,
 )
 from .coordinator import BLE_NAME_PATTERNS_BY_MODEL, _name_matches
@@ -43,7 +43,7 @@ class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry) -> "SkyrcChargerOptionsFlow":
+    def async_get_options_flow(config_entry) -> SkyrcChargerOptionsFlow:
         return SkyrcChargerOptionsFlow()
 
     @classmethod
@@ -58,9 +58,7 @@ class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._model = user_input[CONF_MODEL]
             return await self.async_step_device()
 
-        schema = vol.Schema(
-            {vol.Required(CONF_MODEL, default=MODEL_MC3000): vol.In(MODELS)}
-        )
+        schema = vol.Schema({vol.Required(CONF_MODEL, default=MODEL_MC3000): vol.In(MODELS)})
         return self.async_show_form(step_id="user", data_schema=schema)
 
     async def async_step_device(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -107,7 +105,7 @@ class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             infos = bluetooth.async_discovered_service_info(self.hass, connectable=True)
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             _LOGGER.warning("HA Bluetooth discovery unavailable, using manual setup: %r", err)
             return devices
 
