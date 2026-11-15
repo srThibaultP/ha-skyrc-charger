@@ -8,6 +8,9 @@ CONF_MODEL = "model"
 
 # Stored in the entry options so companion app mode survives a restart.
 OPTION_COMPANION_APP_MODE = "companion_app_mode"
+# The MC5000 expects the passcode shown on its screen, as the app sends it.
+OPTION_PASSCODE = "passcode"
+DEFAULT_PASSCODE = "0000"
 
 DEFAULT_NAME = "SkyRC Charger"
 

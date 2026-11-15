@@ -11,11 +11,13 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CHANNELS_BY_MODEL,
+    DEFAULT_PASSCODE,
     DOMAIN,
     MODEL_NAMES,
     MODEL_MC3000,
     MODEL_MC5000,
     OPTION_COMPANION_APP_MODE,
+    OPTION_PASSCODE,
 )
 from .mc3000_client import BLE_NAME_PATTERNS as MC3000_BLE_NAME_PATTERNS, Mc3000Client
 from .mc5000_client import BLE_NAME_PATTERNS as MC5000_BLE_NAME_PATTERNS, Mc5000Client
@@ -93,6 +95,9 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
         self.channel_count = CHANNELS_BY_MODEL[model]
 
         self.charger: ChargerClient | None = None
+        self.passcode = DEFAULT_PASSCODE
+        if config_entry is not None:
+            self.passcode = config_entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE)
         self._last_device = None
         self._last_good_data = None
         self.pause_polling = False
@@ -228,6 +233,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
 
         if self.charger is None:
             self.charger = CLIENT_BY_MODEL[self.model](device)
+            self.charger.set_passcode(self.passcode)
         else:
             # Reconnecting with a stale BLEDevice is the classic cause of
             # endless reconnect failures, so always hand over the newest one.
@@ -453,6 +459,15 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
     # Polling
     # ------------------------------------------------------------------
+
+    async def async_set_passcode(self, passcode: str) -> None:
+        """Adopt a new passcode and reconnect so the charger sees it."""
+        if passcode == self.passcode:
+            return
+        self.passcode = passcode
+        await self._async_drop_charger()
+        if not self.polling_disabled:
+            await self.async_request_refresh()
 
     def _build_data(self, state):
         return {"state": state, "device": state.device, "channels": state.channels}

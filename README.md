@@ -14,9 +14,11 @@ regardless of which charger you own.
   whose integration structure (config flow, coordinator, entities, companion
   app mode, voltage curves, program writing) this project was based on and
   keeps tracking.
-- MC5000 BLE protocol: re-implemented in pure Python from the reverse
-  engineering documented in [rssdev10/skyrc-mc-rs](https://github.com/rssdev10/skyrc-mc-rs)
-  (`docs/PROTOCOL.md`), originally written in Rust.
+- MC5000 BLE protocol: implemented in pure Python. It started from the
+  reverse engineering documented in [rssdev10/skyrc-mc-rs](https://github.com/rssdev10/skyrc-mc-rs)
+  (`docs/PROTOCOL.md`) and now follows what the official SkyRC app (2.94)
+  sends and reads. Status, settings, start and stop were checked against a
+  charger on firmware 1.83 with a NiMH cell.
 
 ## Installation
 
@@ -38,6 +40,11 @@ Copy `custom_components/skyrc_charger` into your Home Assistant
 your model (MC3000 or MC5000), then pick or enter the BLE address. The
 device list comes from Home Assistant's own Bluetooth manager, so chargers
 seen through an ESPHome or Shelly Bluetooth proxy show up as well.
+
+The **MC5000** has a four digit passcode, shown on its screen (`0000` from
+the factory). Enter it during setup, or later under the integration's
+**Configure** button. With the wrong one the charger still reports its
+status, and a warning in the log says the passcode was refused.
 
 You can add **multiple chargers** (e.g. one MC3000 and one MC5000, or
 several of either) — each becomes its own config entry/device.
@@ -61,8 +68,19 @@ MC3000 only: `sensor.*_input_voltage`, plus the diagnostic
 `*_temperature_unit`, `*_display_mode`, `*_cooling_fan_mode`,
 `*_system_beep` and `*_screensaver` sensors, the per-slot
 `sensor.*_voltage_curve_points` / `button.*_fetch_voltage_curve` pair and
-`switch.*_auto_fetch_voltage_curves`. The MC5000 protocol doesn't document
-any of these.
+`switch.*_auto_fetch_voltage_curves`.
+
+MC5000 only: the per-slot `sensor.*_error` (`none`, or the fault the charger
+reports: `reversed_polarity`, `wrong_battery_type`, `capacity_limit`, …) and
+the diagnostic `*_beep_volume`, `*_notification_volume`,
+`*_end_notification`, `*_backlight`, `*_warning_tone` and `*_sleep_timer`
+sensors, read from the charger's settings on every connection. The firmware
+and hardware versions show on the device page.
+
+On the MC5000 the status is one of `empty`, `idle`, `standby`, `charging`,
+`discharging`, `resting`, `done` or `error`. Battery type, mode, current,
+capacity, temperature, resistance and elapsed time are only reported while a
+program runs; an idle slot gives its voltage alone.
 
 `examples/skyrc-mc3000-dashboard.yaml` is a ready-made Lovelace dashboard
 covering all of it, including charts of the logged voltage curves.
@@ -110,6 +128,16 @@ per-chemistry defaults are used for anything you don't specify (current
 defaults to 1000 mA, capacity to 3000 mAh, target/cutoff voltage from the
 chemistry's standard values).
 
+There is no default chemistry: a start is refused until one is given, either
+in the call or through the select. The modes depend on it too, and a mode
+the chemistry doesn't have is refused:
+
+| Chemistry | Modes |
+| --- | --- |
+| `liion`, `liion_hv`, `lifepo4`, `lto`, `naion` | `charge`, `storage`, `discharge`, `cycle` |
+| `nimh`, `nicd`, `eneloop` | `charge`, `refresh`, `break_in`, `discharge`, `cycle` |
+| `nizn`, `ram` | `charge`, `discharge`, `cycle` |
+
 ### Writing a complete MC3000 program
 
 The MC3000 cannot change one field of a program: the protocol only accepts a
@@ -151,24 +179,10 @@ version.
 
 ## Known limitations
 
-- **MC5000 chemistry sensor (`Battery Type`) is unreliable.** The
-  protocol doc itself flags the 0x91 status response's chemistry byte as
-  "observed, unconfirmed" — and testing against the doc's own two
-  reference captures shows it actually contradicts itself (a NiMH session
-  reads back as `liion` and a Li-Ion session reads back as `nimh`). This
-  is a charger/protocol-level ambiguity, not a parsing bug on our side;
-  there's currently no reliable way to read back the chemistry the MC5000
-  itself thinks a slot is using. Treat this sensor as informational only,
-  and use `select.*_expected_chemistry` as your source of truth — it's
-  what you set in Home Assistant and what gets sent when you start a
-  slot from here, so it always reflects your intent accurately.
-- **MC5000 per-slot stop is unreliable** — confirmed by the protocol doc
-  itself, which states no per-slot stop command was ever observed, only
-  global stop-all. `stop_slot` and the per-slot stop button therefore
-  always stop all MC5000 slots.
-- **No MC5000 input-voltage / device settings sensors, voltage curves or
-  program writing** — the protocol doc doesn't document where any of these
-  live yet.
+- **No MC5000 input-voltage sensor, voltage curves or program writing
+  without a start** yet. The app reads the voltage history with command
+  0x98; the charger did not answer it with empty slots, so it is not wired
+  in.
 - The MC5000 driver is **not officially supported by SkyRC**; it's a
   community reverse-engineering effort. Test carefully, keep an eye on
   your charger the first few times, and don't leave it unattended with
