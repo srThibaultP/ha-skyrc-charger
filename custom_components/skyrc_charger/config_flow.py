@@ -17,7 +17,6 @@ from .const import (
     CONF_NAME,
     DEFAULT_PASSCODE,
     DOMAIN,
-    MODEL_MC3000,
     MODEL_MC5000,
     MODEL_NAMES,
     MODELS,
@@ -34,7 +33,7 @@ def _valid_passcode(value: Any) -> bool:
 
 
 class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for SkyRC MC3000 / MC5000."""
+    """Handle a config flow for the SkyRC chargers."""
 
     VERSION = 1
 
@@ -58,13 +57,13 @@ class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._model = user_input[CONF_MODEL]
             return await self.async_step_device()
 
-        schema = vol.Schema({vol.Required(CONF_MODEL, default=MODEL_MC3000): vol.In(MODELS)})
+        schema = vol.Schema({vol.Required(CONF_MODEL, default=MODEL_MC5000): vol.In(MODELS)})
         return self.async_show_form(step_id="user", data_schema=schema)
 
     async def async_step_device(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Step 2: pick/enter the BLE device address."""
         errors: dict[str, str] = {}
-        model = self._model or MODEL_MC3000
+        model = self._model or MODEL_MC5000
 
         if user_input is not None:
             passcode = str(user_input.get(OPTION_PASSCODE, DEFAULT_PASSCODE)).strip()

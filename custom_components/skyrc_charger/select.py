@@ -49,13 +49,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class SkyrcChemistrySelect(SelectEntity, RestoreEntity):
     """Expected battery chemistry for a slot.
 
-    Used as a start interlock on the MC3000 (refuses to start if it
-    mismatches what the charger reports), and as the chemistry sent in the
-    config packet when starting a slot on the MC5000.
-
-    The options are model specific because each charger names its
-    chemistries differently; offering the union would mean the MC3000
-    interlock could never match what the device reports.
+    The chemistry written into the program when a slot is started: the
+    MC5000 only reports a slot's chemistry while a program runs, so what is
+    in the slot has to be declared.
     """
 
     _attr_has_entity_name = True

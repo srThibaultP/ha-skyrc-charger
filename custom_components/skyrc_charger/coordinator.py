@@ -14,12 +14,10 @@ from .const import (
     CHANNELS_BY_MODEL,
     DEFAULT_PASSCODE,
     DOMAIN,
-    MODEL_MC3000,
     MODEL_MC5000,
     MODEL_NAMES,
     OPTION_PASSCODE,
 )
-from .mc3000_client import BLE_NAME_PATTERNS as MC3000_BLE_NAME_PATTERNS, Mc3000Client
 from .mc5000_client import BLE_NAME_PATTERNS as MC5000_BLE_NAME_PATTERNS, Mc5000Client
 from .models import ChargerClient
 
@@ -52,12 +50,10 @@ FAILURE_REMINDER_SECONDS = 3600.0
 MAX_BACKOFF_INTERVAL = timedelta(minutes=5)
 
 CLIENT_BY_MODEL = {
-    MODEL_MC3000: Mc3000Client,
     MODEL_MC5000: Mc5000Client,
 }
 
 BLE_NAME_PATTERNS_BY_MODEL = {
-    MODEL_MC3000: MC3000_BLE_NAME_PATTERNS,
     MODEL_MC5000: MC5000_BLE_NAME_PATTERNS,
 }
 
@@ -68,7 +64,7 @@ def _name_matches(name: str, patterns: tuple[str, ...]) -> bool:
 
 
 class SkyrcChargerCoordinator(DataUpdateCoordinator):
-    """Coordinator that polls either an MC3000 or MC5000 over BLE."""
+    """Coordinator that polls an MC5000 over BLE."""
 
     def __init__(
         self,
@@ -113,7 +109,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
         self._last_fallback_address: str | None = None
         self._last_direct_scan_monotonic = 0.0
 
-        # Voltage curves (MC3000 only).
+        # Voltage curves.
         self.voltage_curves: dict[int, dict] = {}
         self._last_slot_currents: dict[int, float | None] = {}
         self._slot_current_zero_elapsed: dict[int, int | None] = {}
@@ -125,10 +121,6 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
     @property
     def supports_voltage_curves(self) -> bool:
         return CLIENT_BY_MODEL[self.model].supports_voltage_curves
-
-    @property
-    def supports_programs(self) -> bool:
-        return CLIENT_BY_MODEL[self.model].supports_programs
 
     @property
     def available(self) -> bool:
@@ -273,7 +265,7 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
         return bool(entry is not None and entry.pref_disable_polling)
 
     # ------------------------------------------------------------------
-    # Voltage curves (MC3000)
+    # Voltage curves
     # ------------------------------------------------------------------
 
     def _track_current_transitions(self, data: dict) -> None:
@@ -354,7 +346,6 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
             "min_nonzero_mv": min(nonzero) if nonzero else None,
             "max_nonzero_mv": max(nonzero) if nonzero else None,
             "interval_seconds": curve.interval_seconds,
-            "unknown_3": curve.unknown_3,
             "checksum_ok": curve.checksum_ok,
             "current_zero_elapsed": stop_elapsed,
             "plot_until_index": plot_until_index,

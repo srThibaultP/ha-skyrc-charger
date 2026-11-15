@@ -1,0 +1,766 @@
+# Lovelace view for an MC5000: the status of each slot, the charger's settings and
+# buttons that start a charge with presets for Amazon Basics NiMH cells (AA 2400
+# mAh at 1000 mA, AAA 800 mAh at 400 mA). Paste it in a dashboard's raw editor
+# under "views:". The entity ids assume the charger is named "SkyRC MC5000";
+# replace "skyrc_mc5000" if yours is named differently.
+views:
+- title: SkyRC MC5000
+  path: chargeur
+  icon: mdi:battery-charging
+  type: sections
+  max_columns: 4
+  badges: []
+  sections:
+  - type: grid
+    cards:
+    - type: heading
+      heading: SkyRC MC5000
+      icon: mdi:battery-charging-high
+      heading_style: title
+    - type: markdown
+      content: 'Amazon Basics NiMH presets: **AA** 2400 mAh at 1000 mA, **AAA** 800 mAh at 400 mA. Put
+        the cell in, then press the button of its slot.'
+    - type: tile
+      entity: button.skyrc_mc5000_stop_all
+      name: Stop all
+      icon: mdi:stop-circle-outline
+      hide_state: true
+      grid_options:
+        columns: 6
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.skyrc_mc5000_stop_all
+    - type: tile
+      entity: button.skyrc_mc5000_refresh
+      name: Refresh
+      icon: mdi:refresh
+      hide_state: true
+      grid_options:
+        columns: 6
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.skyrc_mc5000_refresh
+    - type: heading
+      heading: Charger settings
+      icon: mdi:cog-outline
+      heading_style: subtitle
+    - type: tile
+      entity: select.skyrc_mc5000_beep_volume
+      name: Beep
+      icon: mdi:volume-high
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: select.skyrc_mc5000_notification_volume
+      name: Notifications
+      icon: mdi:bell-ring-outline
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: select.skyrc_mc5000_end_notification
+      name: End of charge
+      icon: mdi:bell-check-outline
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: select.skyrc_mc5000_backlight
+      name: Backlight
+      icon: mdi:brightness-6
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: switch.skyrc_mc5000_warning_tone
+      name: Warning tone
+      icon: mdi:alert-octagon-outline
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: select.skyrc_mc5000_sleep_timer
+      name: Sleep timer
+      icon: mdi:sleep
+      grid_options:
+        columns: 6
+  - type: grid
+    cards:
+    - type: heading
+      heading: Slot 1
+      icon: mdi:battery
+      heading_style: title
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_status
+      name: Status
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_voltage
+      name: Voltage
+      icon: mdi:sine-wave
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_error
+      name: Error
+      icon: mdi:alert-circle
+      color: red
+      grid_options:
+        columns: 12
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_1_error
+        state_not: none
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_battery_type
+      name: Battery
+      icon: mdi:battery
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_1_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_mode
+      name: Mode
+      icon: mdi:cog
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_1_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_current
+      name: Current
+      icon: mdi:current-dc
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_1_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_capacity
+      name: Capacity
+      icon: mdi:battery-plus
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_1_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_internal_resistance
+      name: Resistance
+      icon: mdi:omega
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_1_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_elapsed_time
+      name: Duration
+      icon: mdi:timer-outline
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_1_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_status
+      name: Charge AA 2400 mAh
+      icon: mdi:battery-charging-60
+      hide_state: true
+      vertical: false
+      grid_options:
+        columns: 6
+      color: green
+      tap_action:
+        action: perform-action
+        perform_action: skyrc_charger.start_slot
+        data:
+          slot: 1
+          chemistry: nimh
+          mode: charge
+          current_ma: 1000
+          capacity_mah: 2400
+        confirmation:
+          text: Start a NiMH charge for AA 2400 mAh at 1000 mA on slot 1?
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_1_status
+      name: Charge AAA 800 mAh
+      icon: mdi:battery-charging-30
+      hide_state: true
+      vertical: false
+      grid_options:
+        columns: 6
+      color: green
+      tap_action:
+        action: perform-action
+        perform_action: skyrc_charger.start_slot
+        data:
+          slot: 1
+          chemistry: nimh
+          mode: charge
+          current_ma: 400
+          capacity_mah: 800
+        confirmation:
+          text: Start a NiMH charge for AAA 800 mAh at 400 mA on slot 1?
+    - type: tile
+      entity: button.skyrc_mc5000_slot_1_stop
+      name: Stop
+      icon: mdi:stop
+      hide_state: true
+      grid_options:
+        columns: 12
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.skyrc_mc5000_slot_1_stop
+  - type: grid
+    cards:
+    - type: heading
+      heading: Slot 2
+      icon: mdi:battery
+      heading_style: title
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_status
+      name: Status
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_voltage
+      name: Voltage
+      icon: mdi:sine-wave
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_error
+      name: Error
+      icon: mdi:alert-circle
+      color: red
+      grid_options:
+        columns: 12
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_2_error
+        state_not: none
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_battery_type
+      name: Battery
+      icon: mdi:battery
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_2_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_mode
+      name: Mode
+      icon: mdi:cog
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_2_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_current
+      name: Current
+      icon: mdi:current-dc
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_2_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_capacity
+      name: Capacity
+      icon: mdi:battery-plus
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_2_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_internal_resistance
+      name: Resistance
+      icon: mdi:omega
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_2_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_elapsed_time
+      name: Duration
+      icon: mdi:timer-outline
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_2_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_status
+      name: Charge AA 2400 mAh
+      icon: mdi:battery-charging-60
+      hide_state: true
+      vertical: false
+      grid_options:
+        columns: 6
+      color: green
+      tap_action:
+        action: perform-action
+        perform_action: skyrc_charger.start_slot
+        data:
+          slot: 2
+          chemistry: nimh
+          mode: charge
+          current_ma: 1000
+          capacity_mah: 2400
+        confirmation:
+          text: Start a NiMH charge for AA 2400 mAh at 1000 mA on slot 2?
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_2_status
+      name: Charge AAA 800 mAh
+      icon: mdi:battery-charging-30
+      hide_state: true
+      vertical: false
+      grid_options:
+        columns: 6
+      color: green
+      tap_action:
+        action: perform-action
+        perform_action: skyrc_charger.start_slot
+        data:
+          slot: 2
+          chemistry: nimh
+          mode: charge
+          current_ma: 400
+          capacity_mah: 800
+        confirmation:
+          text: Start a NiMH charge for AAA 800 mAh at 400 mA on slot 2?
+    - type: tile
+      entity: button.skyrc_mc5000_slot_2_stop
+      name: Stop
+      icon: mdi:stop
+      hide_state: true
+      grid_options:
+        columns: 12
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.skyrc_mc5000_slot_2_stop
+  - type: grid
+    cards:
+    - type: heading
+      heading: Slot 3
+      icon: mdi:battery
+      heading_style: title
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_status
+      name: Status
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_voltage
+      name: Voltage
+      icon: mdi:sine-wave
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_error
+      name: Error
+      icon: mdi:alert-circle
+      color: red
+      grid_options:
+        columns: 12
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_3_error
+        state_not: none
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_battery_type
+      name: Battery
+      icon: mdi:battery
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_3_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_mode
+      name: Mode
+      icon: mdi:cog
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_3_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_current
+      name: Current
+      icon: mdi:current-dc
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_3_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_capacity
+      name: Capacity
+      icon: mdi:battery-plus
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_3_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_internal_resistance
+      name: Resistance
+      icon: mdi:omega
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_3_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_elapsed_time
+      name: Duration
+      icon: mdi:timer-outline
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_3_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_status
+      name: Charge AA 2400 mAh
+      icon: mdi:battery-charging-60
+      hide_state: true
+      vertical: false
+      grid_options:
+        columns: 6
+      color: green
+      tap_action:
+        action: perform-action
+        perform_action: skyrc_charger.start_slot
+        data:
+          slot: 3
+          chemistry: nimh
+          mode: charge
+          current_ma: 1000
+          capacity_mah: 2400
+        confirmation:
+          text: Start a NiMH charge for AA 2400 mAh at 1000 mA on slot 3?
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_3_status
+      name: Charge AAA 800 mAh
+      icon: mdi:battery-charging-30
+      hide_state: true
+      vertical: false
+      grid_options:
+        columns: 6
+      color: green
+      tap_action:
+        action: perform-action
+        perform_action: skyrc_charger.start_slot
+        data:
+          slot: 3
+          chemistry: nimh
+          mode: charge
+          current_ma: 400
+          capacity_mah: 800
+        confirmation:
+          text: Start a NiMH charge for AAA 800 mAh at 400 mA on slot 3?
+    - type: tile
+      entity: button.skyrc_mc5000_slot_3_stop
+      name: Stop
+      icon: mdi:stop
+      hide_state: true
+      grid_options:
+        columns: 12
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.skyrc_mc5000_slot_3_stop
+  - type: grid
+    cards:
+    - type: heading
+      heading: Slot 4
+      icon: mdi:battery
+      heading_style: title
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_status
+      name: Status
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_voltage
+      name: Voltage
+      icon: mdi:sine-wave
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_error
+      name: Error
+      icon: mdi:alert-circle
+      color: red
+      grid_options:
+        columns: 12
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_4_error
+        state_not: none
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_battery_type
+      name: Battery
+      icon: mdi:battery
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_4_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_mode
+      name: Mode
+      icon: mdi:cog
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_4_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_current
+      name: Current
+      icon: mdi:current-dc
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_4_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_capacity
+      name: Capacity
+      icon: mdi:battery-plus
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_4_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_internal_resistance
+      name: Resistance
+      icon: mdi:omega
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_4_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_elapsed_time
+      name: Duration
+      icon: mdi:timer-outline
+      grid_options:
+        columns: 6
+      visibility:
+      - condition: state
+        entity: sensor.skyrc_mc5000_slot_4_status
+        state:
+        - charging
+        - discharging
+        - resting
+        - done
+        - error
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_status
+      name: Charge AA 2400 mAh
+      icon: mdi:battery-charging-60
+      hide_state: true
+      vertical: false
+      grid_options:
+        columns: 6
+      color: green
+      tap_action:
+        action: perform-action
+        perform_action: skyrc_charger.start_slot
+        data:
+          slot: 4
+          chemistry: nimh
+          mode: charge
+          current_ma: 1000
+          capacity_mah: 2400
+        confirmation:
+          text: Start a NiMH charge for AA 2400 mAh at 1000 mA on slot 4?
+    - type: tile
+      entity: sensor.skyrc_mc5000_slot_4_status
+      name: Charge AAA 800 mAh
+      icon: mdi:battery-charging-30
+      hide_state: true
+      vertical: false
+      grid_options:
+        columns: 6
+      color: green
+      tap_action:
+        action: perform-action
+        perform_action: skyrc_charger.start_slot
+        data:
+          slot: 4
+          chemistry: nimh
+          mode: charge
+          current_ma: 400
+          capacity_mah: 800
+        confirmation:
+          text: Start a NiMH charge for AAA 800 mAh at 400 mA on slot 4?
+    - type: tile
+      entity: button.skyrc_mc5000_slot_4_stop
+      name: Stop
+      icon: mdi:stop
+      hide_state: true
+      grid_options:
+        columns: 12
+      tap_action:
+        action: perform-action
+        perform_action: button.press
+        target:
+          entity_id: button.skyrc_mc5000_slot_4_stop

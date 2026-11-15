@@ -3,6 +3,3 @@ __pycache__/
 .DS_Store
 ha_core_logs*.txt
 ble_scan_results.txt
-mc3000_connect_test.txt
-mc3000_method_signatures.txt
-skyrc_ble_api_inspect.txt

@@ -10,10 +10,10 @@ their author, Joost Perquin, and LICENSE does not grant any rights to them.
 
 The MC5000 driver (mc5000_client.py) is written from the protocol the
 official SkyRC app speaks and was checked against a charger. It contains no
-code from the projects above.
-
-The skyrc-ble library is a separate dependency under the MIT license. See
-https://github.com/srThibaultP/skyrc-ble.
+code from the project above, and the MC3000 code that came from it, together
+with the skyrc-ble library it relied on, was removed in version 2.0. The
+structure of the integration (config flow, coordinator, entities) still
+started from that project.
 
 The icon and logo (icon.png and custom_components/skyrc_charger/brand/) are
 the SkyRC app icon, taken from the official SkyRC app. The SkyRC name and
