@@ -112,8 +112,7 @@ stop_all:
 fetch_voltage_curve:
   name: Fetch voltage curve
   description: >
-    Read back the voltage curve the charger logged for one slot (MC3000
-    only). The samples land on the slot's "Voltage Curve Points" sensor as
+    Read back the voltage curve the charger logged for one slot. The samples land on the slot's "Voltage Curve Points" sensor as
     attributes.
   fields:
     entry_id: *entry_id

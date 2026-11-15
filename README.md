@@ -70,9 +70,13 @@ MC3000 only: the per-slot `sensor.*_temperature` and `*_cycle_count` (the
 MC5000 reports no slot temperature: the field stays at 0, even while
 charging), `sensor.*_input_voltage`, plus the diagnostic
 `*_temperature_unit`, `*_display_mode`, `*_cooling_fan_mode`,
-`*_system_beep` and `*_screensaver` sensors, the per-slot
-`sensor.*_voltage_curve_points` / `button.*_fetch_voltage_curve` pair and
-`switch.*_auto_fetch_voltage_curves`.
+`*_system_beep` and `*_screensaver` sensors.
+
+Both models: the per-slot `sensor.*_voltage_curve_points` /
+`button.*_fetch_voltage_curve` pair and `switch.*_auto_fetch_voltage_curves`.
+The MC5000 logs the whole run from the start of the program: one sample
+every 8 seconds at first, then the interval doubles as the run grows (16 s
+after about 40 minutes), and the curve comes back in pages of 100 samples.
 
 MC5000 only: the per-slot `sensor.*_error` (`none`, or the fault the charger
 reports: `reversed_polarity`, `wrong_battery_type`, `capacity_limit`, …) and
@@ -109,7 +113,7 @@ can leave it out while a single charger is configured.
 | `skyrc_charger.stop_slot` | Stop one slot. |
 | `skyrc_charger.start_all` | Start every slot in one go. |
 | `skyrc_charger.stop_all` | Stop every slot. |
-| `skyrc_charger.fetch_voltage_curve` | MC3000: read back a slot's logged voltage curve. |
+| `skyrc_charger.fetch_voltage_curve` | Read back a slot's logged voltage curve. |
 | `skyrc_charger.write_program` | MC3000: write a complete program to a slot (without starting it). |
 
 ### Chemistry interlock
@@ -183,10 +187,8 @@ version.
 
 ## Known limitations
 
-- **No MC5000 input-voltage sensor, voltage curves or program writing
-  without a start** yet. The app reads the voltage history with command
-  0x98; the charger did not answer it with empty slots, so it is not wired
-  in.
+- **No MC5000 program writing without a start**: on the MC5000, writing a
+  program is what starts the slot.
 - The MC5000 driver is **not officially supported by SkyRC**; it's a
   community reverse-engineering effort. Test carefully, keep an eye on
   your charger the first few times, and don't leave it unattended with
