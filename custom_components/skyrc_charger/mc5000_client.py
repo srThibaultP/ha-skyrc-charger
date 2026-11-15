@@ -9,7 +9,7 @@ MC5000 with the same command set as the NC3000:
 Commands used here:
 
     0x57  device info (model code, firmware/hardware version)
-    0x74  verify the passcode shown on the charger's screen ("0000" from
+    0x74  verify the passcode shown on the charger's screen ("1234" from
           the factory); answers 1 when it matches
     0x65  firmware update check (sent with "no update" by the app)
     0x91  slot status, one slot per request (slot bitmask)

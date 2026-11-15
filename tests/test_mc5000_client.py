@@ -291,7 +291,8 @@ class StartStopTest(unittest.IsolatedAsyncioTestCase):
 
         writes = await self._unlock(client, bytes.fromhex("0f0474010176"))
 
-        self.assertEqual(writes, [bytes.fromhex("0f07740000000000" + "74")])
+        # 0x74 + 0x00 + 1 + 2 + 3 + 4 = 0x7E
+        self.assertEqual(writes, [bytes.fromhex("0f077400010203047e")])
         self.assertTrue(client.unlocked)
 
     async def test_a_refused_passcode_is_reported_once(self) -> None:
