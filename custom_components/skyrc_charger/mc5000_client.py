@@ -58,6 +58,7 @@ CMD_FIRMWARE_CHECK = 0x65
 CMD_INFO = 0x57
 CMD_VERIFY_PASSWORD = 0x74
 CMD_STATUS = 0x91
+CMD_STATUS_228 = 0x9A
 CMD_QUERY_SLOT_SETTINGS = 0x93
 CMD_CONFIG = 0x94
 CMD_QUERY_SYSTEM = 0x96
@@ -801,7 +802,7 @@ class Mc5000Client(ChargerClient):
         The charger answers one request with all the pages in a row, one
         sample every `interval` seconds since the program started.
         """
-        bitmask = CHANNEL_BITMASK[channel]
+        bitmask = self._port_byte(channel)
         page = await self._request(CMD_VOLTAGE_CURVE, bytes([bitmask]))
         samples: list[int] = []
         interval = None
@@ -938,8 +939,12 @@ class Mc5000Client(ChargerClient):
             self._last_config[channel] = config
             await self._send_program(channel, payload)
 
+    def _port_byte(self, channel: int) -> int:
+        """How a slot is named in a command: a bitmask, on this family."""
+        return CHANNEL_BITMASK[channel]
+
     async def stop_channel(self, channel: int) -> None:
-        await self._request(CMD_STOP, bytes([CHANNEL_BITMASK[channel]]))
+        await self._request(CMD_STOP, bytes([self._port_byte(channel)]))
 
     async def stop_all(self) -> None:
         # One slot per command, like the app; a combined mask is untested.

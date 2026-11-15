@@ -138,7 +138,8 @@ async def async_setup_entry(
             for description in SLOT_SENSORS
             if not description.models or coordinator.model in description.models
         )
-        entities.append(CurveSensor(coordinator, index))
+        if coordinator.supports_curves:
+            entities.append(CurveSensor(coordinator, index))
     async_add_entities(entities)
 
 

@@ -244,7 +244,7 @@ async def test_an_nc3000_is_recognised_by_its_model_code(
 async def test_a_model_the_integration_does_not_know_is_refused(
     hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
 ) -> None:
-    client.model_code = "100181"  # an NC2200, say
+    client.model_code = "100999"  # a model nobody knows
     with patch("homeassistant.components.bluetooth.async_discovered_service_info", return_value=[]):
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
 
@@ -269,3 +269,19 @@ async def test_a_charger_is_one_entry_whatever_its_model(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_a_type_228_is_recognised_by_its_model_code(
+    hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
+) -> None:
+    client.model_code = "100228"
+    with patch("homeassistant.components.bluetooth.async_discovered_service_info", return_value=[]):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+
+    with patch("custom_components.skyrc_charger.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_ADDRESS: ADDRESS, OPTION_PASSCODE: "1234"}
+        )
+
+    assert result["data"][CONF_MODEL] == "type228"
+    assert result["title"] == "SkyRC type 228"

@@ -6,11 +6,12 @@ chargers over BLE, from what the official SkyRC app does.
 | Model | Status |
 | --- | --- |
 | **MC5000** | Full support, tested on a charger (firmware 1.83): status, start, stop, curves, settings. |
+| **NC2200** | Experimental, **monitoring and stop only**: no settings and no curve either (the app reads them from it with other commands). Written from the app, not tested on a charger. |
 | **NC3000** | Experimental, **monitoring and stop only**, written from the app and not tested on a charger. Starting a slot is refused until its program has been checked. |
+| **Type 228** (8 slots) | Experimental, **monitoring and stop only**, same limits as the NC3000. The app knows it only by its model code `100228`. |
 
 The model is recognised when the charger is added: it tells it itself.
-More models of the app (NC2200, type 228, the Q200/D200/B6 family, BD380,
-PSU650) are planned.
+More models of the app (the Q200/D200/B6 family, BD380, PSU650) are planned.
 
 > **Version 2.0 dropped the MC3000.** The SkyRC app does not support it and its
 > support depended on a third-party library. If you still have an MC3000
