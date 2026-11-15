@@ -16,6 +16,7 @@ DEFAULT_LEGACY_PASSWORD = "5793"
 
 DEFAULT_NAME = "SkyRC Charger"
 
+MODEL_BD380 = "bd380"
 MODEL_MC5000 = "mc5000"
 MODEL_NC2200 = "nc2200"
 MODEL_NC3000 = "nc3000"
@@ -55,6 +56,7 @@ LEGACY_BY_KEY = {model.key: model for model in LEGACY_MODELS}
 # Labels for the model picker in the config flow.
 MODELS = {
     **{model.key: f"SkyRC {model.name} ({model.channels} channels)" for model in LEGACY_MODELS},
+    MODEL_BD380: "SkyRC BD380 (discharger)",
     MODEL_MC5000: "SkyRC MC5000 (4 slots)",
     MODEL_NC2200: "SkyRC NC2200 (4 slots)",
     MODEL_NC3000: "SkyRC NC3000 (4 slots)",
@@ -64,6 +66,7 @@ MODELS = {
 # What the charger answers to the info request, as the app tells them apart.
 MODEL_BY_CODE = {
     **{model.code: model.key for model in LEGACY_MODELS},
+    "600153": MODEL_BD380,
     "100214": MODEL_MC5000,
     "100181": MODEL_NC2200,
     "100209": MODEL_NC3000,
@@ -74,6 +77,7 @@ MODEL_BY_CODE = {
 # are built from - so keep it short and free of parentheses.
 MODEL_NAMES = {
     **{model.key: f"SkyRC {model.name}" for model in LEGACY_MODELS},
+    MODEL_BD380: "SkyRC BD380",
     MODEL_MC5000: "SkyRC MC5000",
     MODEL_NC2200: "SkyRC NC2200",
     MODEL_NC3000: "SkyRC NC3000",
@@ -82,6 +86,7 @@ MODEL_NAMES = {
 
 CHANNELS_BY_MODEL = {
     **{model.key: model.channels for model in LEGACY_MODELS},
+    MODEL_BD380: 1,
     MODEL_MC5000: 4,
     MODEL_NC2200: 4,
     MODEL_NC3000: 4,
@@ -136,4 +141,6 @@ MODE_OPTIONS = sorted(MC5000_MODE_OPTIONS)
 
 def default_passcode(model: str) -> str:
     """The factory passcode of a model, which the app tries first."""
-    return DEFAULT_LEGACY_PASSWORD if model in LEGACY_BY_KEY else DEFAULT_PASSCODE
+    if model in LEGACY_BY_KEY or model == MODEL_BD380:
+        return DEFAULT_LEGACY_PASSWORD
+    return DEFAULT_PASSCODE

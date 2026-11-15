@@ -19,12 +19,14 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .bd380_client import Bd380Client
 from .const import (
     CHANNELS_BY_MODEL,
     CONF_ADDRESS,
     CONF_MODEL,
     DOMAIN,
     LEGACY_BY_KEY,
+    MODEL_BD380,
     MODEL_MC5000,
     MODEL_NC2200,
     MODEL_NC3000,
@@ -46,6 +48,7 @@ _LOGGER = logging.getLogger(__name__)
 type SkyrcConfigEntry = ConfigEntry[SkyrcCoordinator]
 
 CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
+    MODEL_BD380: Bd380Client,
     MODEL_MC5000: Mc5000Client,
     MODEL_NC2200: Nc2200Client,
     MODEL_NC3000: Nc3000Client,
