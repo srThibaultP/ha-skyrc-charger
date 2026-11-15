@@ -105,8 +105,6 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
             return "unsupported_model", None, passcode
 
         passcode = passcode or default_passcode(model)
-        if not _passcode_ok(passcode):
-            return "invalid_passcode_format", None, passcode
 
         client = CLIENTS[model](device)
         client.set_passcode(passcode)

@@ -123,3 +123,20 @@ async def test_turning_polling_off_lets_go_of_the_charger(
     await hass.async_block_till_done()
 
     assert not client.connected
+
+
+async def test_a_second_command_restarts_the_idle_timer(
+    hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
+) -> None:
+    config_entry = make_entry(pref_disable_polling=True)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    for _ in range(2):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": "button.skyrc_mc5000_slot_1_stop"}, blocking=True
+        )
+    await _tick(hass, IDLE_DISCONNECT + 1)
+
+    assert not client.connected

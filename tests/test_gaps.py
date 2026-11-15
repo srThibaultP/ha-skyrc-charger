@@ -18,6 +18,8 @@ type228 = load("type228_client")
 psu650 = load("psu650_client")
 legacy = load("legacy_client")
 const = load("const")
+bd380 = load("bd380_client")
+models = load("models")
 BleakError = _harness.BleakError
 
 
@@ -424,6 +426,128 @@ class OtherEdgeTest(unittest.IsolatedAsyncioTestCase):
             await client.start_channel(0)
         with self.assertRaises(ValueError):
             await client.start_all()
+
+
+class LastLinesTest(unittest.IsolatedAsyncioTestCase):
+    async def test_a_failed_handshake_survives_a_failed_cleanup(self) -> None:
+        async def broken_disconnect(self_):
+            raise BleakError("cleanup")
+
+        client = mc5000.Mc5000Client(Device())
+
+        async def boom():
+            raise BleakError("no")
+
+        client._async_handshake = boom
+        with (
+            unittest.mock.patch.object(FakeBleakClient, "disconnect", broken_disconnect),
+            unittest.mock.patch("asyncio.wait_for", new=_timeout),
+            self.assertRaises(BleakError),
+        ):
+            await client.connect()
+
+        wired = mc5000.Mc5000Client(Device())
+        wired._client = unittest.mock.Mock(disconnect=unittest.mock.AsyncMock(side_effect=OSError))
+        await wired.disconnect()
+
+    async def test_the_handshake_keeps_the_device_info(self) -> None:
+        client = mc5000.Mc5000Client(Device())
+        resp = bytearray(20)
+        resp[3:9] = b"100214"
+        wire(client, {0x57: bytes(resp), 0x74: frame(0x74, 0, 0, 1, cmd_at=2)}, default=None)
+
+        async def settings():
+            return None
+
+        async def send(*_args, **_kwargs):
+            return None
+
+        client._query_system_settings = settings
+        client._send = send
+        await client._async_handshake()
+        self.assertEqual(client.model_code, "100214")
+
+    async def test_a_timeout_after_an_unrelated_notification(self) -> None:
+        client = mc5000.Mc5000Client(Device())
+        client._client = FakeBleakClient()
+        client._connected = True
+        real = asyncio.wait_for
+        calls = []
+
+        async def second_times_out(aw, timeout):
+            calls.append(1)
+            if len(calls) == 1:
+                return await real(aw, timeout)
+            aw.close()
+            raise TimeoutError
+
+        async def write(_char, data, response=False):
+            client._notify_queue.put_nowait(b"\x0f\x03\x06\x01\x07")
+
+        client._client.write_gatt_char = write
+        with unittest.mock.patch("asyncio.wait_for", new=second_times_out):
+            self.assertIsNone(await client._request(0x99))
+
+    async def test_info_that_cannot_be_parsed_is_dropped(self) -> None:
+        client = mc5000.Mc5000Client(Device())
+        wire(client, {0x57: bytes(20)})
+        with unittest.mock.patch.object(
+            mc5000.Mc5000Client, "_parse_device_info", side_effect=ValueError
+        ):
+            self.assertIsNone(await client._query_device_info())
+
+    def test_unknown_settings_fall_back_to_the_defaults(self) -> None:
+        data = mc5000.Mc5000Client._settings_bytes(mc5000.DeviceData(beep_volume="weird"))
+        self.assertEqual(data[0], 0)
+
+    async def test_a_status_answer_is_parsed(self) -> None:
+        client = mc5000.Mc5000Client(Device())
+        wire(client, {0x91: bytes(22)})
+        state = await client.async_update()
+        self.assertEqual(len(state.channels), 4)
+
+        three = mc3000.Mc3000Client(Device())
+        wire(three, {0x55: frame(0x55, 0, 3, 0, 5, 1)})
+        self.assertEqual((await three.async_update()).channels[0].chemistry, "nimh")
+        three._notify_queue.put_nowait(b"stale")
+        wire_client = FakeBleakClient()
+        three._client = wire_client
+        await three._write_frame(bytes(20))
+        self.assertEqual(wire_client.writes, [bytes(20)])
+        self.assertTrue(three._notify_queue.empty())
+
+    async def test_the_base_start_all_starts_one_by_one(self) -> None:
+        started = []
+
+        class Two(models.ChargerClient):
+            channel_count = 2
+
+            async def start_channel(self, channel, **kwargs):
+                started.append((channel, kwargs))
+
+        await Two().start_all(per_channel={1: {"mode": "cycle"}}, chemistry="nimh")
+        self.assertEqual(
+            started, [(0, {"chemistry": "nimh"}), (1, {"chemistry": "nimh", "mode": "cycle"})]
+        )
+
+    async def test_short_frames_and_start_refusals_of_the_small_drivers(self) -> None:
+        self.assertEqual(nc2200.Nc2200Client._parse_channel(0, b"\x0f").status, "unavailable")
+        for client in (
+            nc2200.Nc2200Client(Device()),
+            type228.Type228Client(Device()),
+            bd380.Bd380Client(Device()),
+        ):
+            with self.assertRaises(ValueError):
+                await client.start_all()
+
+        client = bd380.Bd380Client(Device())
+        self.assertEqual(client._parse_status(b"\x0f").status, "unavailable")
+        wire(client, {0x57: frame(0x57), 0x74: frame(0x74, 0, 0, 1, cmd_at=2)})
+        await client._async_handshake()
+        self.assertEqual(client._device_info.sw_version, "0.00")
+        client._connected = False
+        with self.assertRaises(BleakError):
+            await client.async_update()
 
 
 if __name__ == "__main__":
