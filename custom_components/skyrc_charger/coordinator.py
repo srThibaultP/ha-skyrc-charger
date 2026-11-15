@@ -23,8 +23,8 @@ from .const import (
     CHANNELS_BY_MODEL,
     CONF_ADDRESS,
     CONF_MODEL,
-    DEFAULT_PASSCODE,
     DOMAIN,
+    LEGACY_BY_KEY,
     MODEL_MC5000,
     MODEL_NC2200,
     MODEL_NC3000,
@@ -32,7 +32,9 @@ from .const import (
     MODELS_WITH_CURVE,
     MODELS_WITH_START,
     OPTION_PASSCODE,
+    default_passcode,
 )
+from .legacy_client import make_legacy_client
 from .mc5000_client import Mc5000Client
 from .models import ChargerClient, ChargerState
 from .nc2200_client import Nc2200Client
@@ -48,6 +50,7 @@ CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
     MODEL_NC2200: Nc2200Client,
     MODEL_NC3000: Nc3000Client,
     MODEL_TYPE228: Type228Client,
+    **{key: make_legacy_client(key) for key in LEGACY_BY_KEY},
 }
 
 # The models whose own settings (beeps, backlight, ...) can be written.
@@ -114,7 +117,7 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
 
     @property
     def passcode(self) -> str:
-        return str(self.config_entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE))
+        return str(self.config_entry.options.get(OPTION_PASSCODE, default_passcode(self.model)))
 
     @property
     def supports_start(self) -> bool:

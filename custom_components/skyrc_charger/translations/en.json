@@ -12,7 +12,7 @@
         },
         "data_description": {
           "address": "The charger shows up as #Charger followed by four characters.",
-          "passcode": "The four digits the charger shows on its screen. 1234 from the factory."
+          "passcode": "The four digits the charger asks for: the one shown on its screen on the MC5000 (1234 from the factory), 5793 on the older chargers. Leave empty for the factory one."
         }
       },
       "confirm": {
@@ -22,7 +22,7 @@
           "passcode": "Passcode"
         },
         "data_description": {
-          "passcode": "The four digits the charger shows on its screen. 1234 from the factory."
+          "passcode": "The four digits the charger asks for: the one shown on its screen on the MC5000 (1234 from the factory), 5793 on the older chargers. Leave empty for the factory one."
         }
       },
       "reauth_confirm": {

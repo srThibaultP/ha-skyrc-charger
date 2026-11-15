@@ -284,4 +284,4 @@ async def test_a_type_228_is_recognised_by_its_model_code(
         )
 
     assert result["data"][CONF_MODEL] == "type228"
-    assert result["title"] == "SkyRC type 228"
+    assert result["title"] == "SkyRC NC3000 Octa"

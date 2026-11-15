@@ -425,8 +425,11 @@ class Mc5000Client(ChargerClient):
         _LOGGER.debug("MC5000: disconnected from %s", getattr(self._device, "address", "?"))
         self._connected = False
 
-    async def connect(self) -> None:
+    async def connect(self, probe: bool = False) -> None:
         """Open the BLE link and run the charger's mandatory init sequence.
+
+        With `probe`, only ask the charger which model it is and stay
+        connected: the caller then picks the driver that fits the model.
 
         Goes through bleak_retry_connector.establish_connection() rather than
         BleakClient.connect(): it retries the transient BlueZ/proxy errors
@@ -463,16 +466,12 @@ class Mc5000Client(ChargerClient):
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self._notify_queue.get(), timeout=2.0)
 
-                # Same opening as the app: identify the charger, unlock it
-                # with its passcode, decline the firmware update.
-                # 0xFE is deliberately absent: it is the stop command.
-                device_info = await self._query_device_info()
-                await self._unlock()
-                await self._send(CMD_FIRMWARE_CHECK, b"\x00\x00")
-
-                if device_info:
-                    self._device_info = device_info
-                await self._query_system_settings()
+                if probe:
+                    device_info = await self._query_device_info()
+                    if device_info:
+                        self._device_info = device_info
+                else:
+                    await self._async_handshake()
             except Exception:
                 # Never leave a half-initialised client behind; the charger
                 # only accepts one connection and would refuse the retry.
@@ -483,6 +482,20 @@ class Mc5000Client(ChargerClient):
                 except Exception as err:
                     _LOGGER.debug("MC5000: cleanup disconnect failed: %r", err)
                 raise
+
+    async def _async_handshake(self) -> None:
+        """Same opening as the app: identify the charger, unlock it with its
+        passcode, decline the firmware update.
+
+        0xFE is deliberately absent: it is the stop command.
+        """
+        device_info = await self._query_device_info()
+        await self._unlock()
+        await self._send(CMD_FIRMWARE_CHECK, b"\x00\x00")
+
+        if device_info:
+            self._device_info = device_info
+        await self._query_system_settings()
 
     async def disconnect(self) -> None:
         self._connected = False

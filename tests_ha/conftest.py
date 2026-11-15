@@ -11,6 +11,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.skyrc_charger.const import (
+    CHANNELS_BY_MODEL,
     CONF_ADDRESS,
     CONF_MODEL,
     CONF_NAME,
@@ -77,7 +78,7 @@ class FakeClient(ChargerClient):
     def set_passcode(self, passcode: str) -> None:
         self.passcode = passcode
 
-    async def connect(self) -> None:
+    async def connect(self, probe: bool = False) -> None:
         if self.fail:
             raise self.fail
         self.connected = True
@@ -123,7 +124,7 @@ def client() -> Generator[FakeClient]:
     with (
         patch.dict(
             "custom_components.skyrc_charger.coordinator.CLIENTS",
-            {MODEL_MC5000: lambda _: fake, "nc3000": lambda _: fake, "nc2200": lambda _: fake},
+            {key: (lambda _: fake) for key in CHANNELS_BY_MODEL},
         ),
         patch("custom_components.skyrc_charger.config_flow.Mc5000Client", lambda _: fake),
     ):

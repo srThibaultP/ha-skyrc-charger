@@ -8,10 +8,11 @@ chargers over BLE, from what the official SkyRC app does.
 | **MC5000** | Full support, tested on a charger (firmware 1.83): status, start, stop, curves, settings. |
 | **NC2200** | Experimental, **monitoring and stop only**: no settings and no curve either (the app reads them from it with other commands). Written from the app, not tested on a charger. |
 | **NC3000** | Experimental, **monitoring and stop only**, written from the app and not tested on a charger. Starting a slot is refused until its program has been checked. |
-| **Type 228** (8 slots) | Experimental, **monitoring and stop only**, same limits as the NC3000. The app knows it only by its model code `100228`. |
+| **NC3000 Octa** (8 slots) | Experimental, **monitoring and stop only**, same limits as the NC3000. The app knows it by its model code `100228`. |
+| **Q200, Q200V2, Q200 neo, Q500 neo, D100, D200s, D200 Nex, D200 neo (metal), D260, D750 Ultra, D8neo, B6nano, B6evo, B6 nax** | Experimental, **monitoring and stop only**. These older chargers use another protocol: each channel is unlocked with a password (5793 unless you changed it) and reports whether it works, its voltage, current, capacity, time, temperature and resistance. The number of channels and the password flag are the ones of the list the app downloads from SkyRC. Not tested on a charger. |
 
 The model is recognised when the charger is added: it tells it itself.
-More models of the app (the Q200/D200/B6 family, BD380, PSU650) are planned.
+More models of the app (BD380, PSU650) are planned.
 
 > **Version 2.0 dropped the MC3000.** The SkyRC app does not support it and its
 > support depended on a third-party library. If you still have an MC3000
@@ -52,8 +53,9 @@ Shelly Bluetooth proxy show up as well. Home Assistant connects to the charger
 to check it: it must be on, and reachable by an adapter or an *active*
 Bluetooth proxy (a passive scanner hears it but cannot connect).
 
-The charger has a four digit passcode, shown on its screen (`1234` from the
-factory). Enter it during setup. If the charger later refuses it, Home
+The charger has a four digit passcode: the one shown on its screen on the
+MC5000 (`1234` from the factory), `5793` on the older chargers. Leave it empty
+during setup to use the factory one. If the charger later refuses it, Home
 Assistant asks for the right one (the "Repairs"-style reauthentication
 notice). It can also be changed under the integration's **Configure** button.
 
@@ -69,6 +71,15 @@ For each of the four slots:
 `sensor.*_status`, `*_battery_type`, `*_mode`, `*_voltage`, `*_current`,
 `*_capacity`, `*_internal_resistance`, `*_elapsed_time`, `*_temperature`,
 `select.*_expected_chemistry`, `button.*_start`, `button.*_stop`.
+
+Only the entities a model reports are created. The NC3000, the NC3000 Octa
+and the NC2200 report no battery type; the NC2200 has no curve and no
+settings; no model other than the MC5000 has a start button, a chemistry
+select or `start_all` yet. The older chargers call their channels slots in the
+entity names (`sensor.skyrc_q200_slot_1_voltage`), and their status is
+`idle`, `active` (charging or discharging: the app does not say which in the
+status), `dc_output` or `error`, with the error given as
+`system_<code>_charge_<code>`.
 
 Device-level: `button.*_refresh`, `button.*_start_all`, `button.*_stop_all`.
 
