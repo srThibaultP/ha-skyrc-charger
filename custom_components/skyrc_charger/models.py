@@ -35,6 +35,8 @@ class DeviceData:
     address: str = ""
     manufacturer: str = "SkyRC"
     model: str = ""
+    #: The code the charger answers to the info request, e.g. "100214".
+    model_code: str | None = None
     hw_version: str | None = None
     sw_version: str | None = None
     # MC5000-only settings.

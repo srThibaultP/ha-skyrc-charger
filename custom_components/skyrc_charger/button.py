@@ -80,10 +80,16 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data
     entities: list[ButtonEntity] = [
-        DeviceButton(coordinator, description) for description in DEVICE_BUTTONS
+        DeviceButton(coordinator, description)
+        for description in DEVICE_BUTTONS
+        if coordinator.supports_start or description.key != "start_all"
     ]
     for slot in range(1, coordinator.channel_count + 1):
-        entities.extend(SlotButton(coordinator, slot, description) for description in SLOT_BUTTONS)
+        entities.extend(
+            SlotButton(coordinator, slot, description)
+            for description in SLOT_BUTTONS
+            if coordinator.supports_start or description.key != "start"
+        )
     async_add_entities(entities)
 
 

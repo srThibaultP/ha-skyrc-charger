@@ -1,9 +1,18 @@
-# SkyRC Charger – Home Assistant Integration (MC5000)
+# SkyRC Charger – Home Assistant Integration
 
-Custom Home Assistant integration that monitors and controls the SkyRC
-MC5000 battery charger (four slots) over BLE.
+Custom Home Assistant integration that monitors and controls SkyRC battery
+chargers over BLE, from what the official SkyRC app does.
 
-> **Version 2.0 drops the MC3000.** The SkyRC app does not support it and its
+| Model | Status |
+| --- | --- |
+| **MC5000** | Full support, tested on a charger (firmware 1.83): status, start, stop, curves, settings. |
+| **NC3000** | Experimental, **monitoring and stop only**, written from the app and not tested on a charger. Starting a slot is refused until its program has been checked. |
+
+The model is recognised when the charger is added: it tells it itself.
+More models of the app (NC2200, type 228, the Q200/D200/B6 family, BD380,
+PSU650) are planned.
+
+> **Version 2.0 dropped the MC3000.** The SkyRC app does not support it and its
 > support depended on a third-party library. If you still have an MC3000
 > entry, remove it; its entities will go. Version 1.x keeps working for the
 > MC3000.

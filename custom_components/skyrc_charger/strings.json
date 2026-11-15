@@ -39,7 +39,8 @@
     "error": {
       "cannot_connect": "Cannot connect to the charger. It must be on and reachable by a Bluetooth adapter or an active Bluetooth proxy.",
       "invalid_auth": "The charger refused the passcode.",
-      "invalid_passcode_format": "The passcode is four digits."
+      "invalid_passcode_format": "The passcode is four digits.",
+      "unsupported_model": "This charger is not a model the integration supports yet."
     },
     "abort": {
       "already_configured": "This charger is already configured.",

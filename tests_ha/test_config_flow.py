@@ -221,3 +221,51 @@ async def test_a_bad_passcode_in_the_options_is_refused(
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {OPTION_PASSCODE: "invalid_passcode_format"}
+
+
+async def test_an_nc3000_is_recognised_by_its_model_code(
+    hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
+) -> None:
+    client.model_code = "100209"
+    with patch("homeassistant.components.bluetooth.async_discovered_service_info", return_value=[]):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+
+    with patch("custom_components.skyrc_charger.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_ADDRESS: ADDRESS, OPTION_PASSCODE: "1234"}
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "SkyRC NC3000"
+    assert result["data"][CONF_MODEL] == "nc3000"
+    assert result["result"].unique_id == f"nc3000-{ADDRESS}"
+
+
+async def test_a_model_the_integration_does_not_know_is_refused(
+    hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
+) -> None:
+    client.model_code = "100181"  # an NC2200, say
+    with patch("homeassistant.components.bluetooth.async_discovered_service_info", return_value=[]):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ADDRESS: ADDRESS, OPTION_PASSCODE: "1234"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "unsupported_model"}
+
+
+async def test_a_charger_is_one_entry_whatever_its_model(
+    hass: HomeAssistant, entry: MockConfigEntry, client: FakeClient
+) -> None:
+    client.model_code = "100209"
+    with patch("homeassistant.components.bluetooth.async_discovered_service_info", return_value=[]):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ADDRESS: ADDRESS, OPTION_PASSCODE: "1234"}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"

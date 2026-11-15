@@ -334,6 +334,10 @@ def _u16(value: int) -> bytes:
 
 class Mc5000Client(ChargerClient):
     channel_count = 4
+    #: What the charger calls itself, and the code it answers to the info
+    #: request; subclasses for the other models of the app change these.
+    MODEL_NAME = "MC5000"
+    MODEL_CODE = MC5000_MODEL_CODE
     supports_voltage_curves = True
     supports_settings = True
 
@@ -342,7 +346,7 @@ class Mc5000Client(ChargerClient):
         self._client: BleakClient | None = None
         self._notify_queue: asyncio.Queue[bytes] = asyncio.Queue()
         self._rx_buffer = bytearray()
-        self._device_info = DeviceData(name="SkyRC MC5000", model="MC5000")
+        self._device_info = DeviceData(name=f"SkyRC {self.MODEL_NAME}", model=self.MODEL_NAME)
         self._connect_lock = asyncio.Lock()
         self._connected = False
         self._passcode = DEFAULT_PASSCODE
@@ -351,6 +355,11 @@ class Mc5000Client(ChargerClient):
         # last known config per channel, used so "start" can be called
         # without forcing the user to re-specify chemistry every time
         self._last_config: dict[int, dict] = {}
+
+    @property
+    def model_code(self) -> str | None:
+        """The code the charger gave in answer to the info request."""
+        return self._device_info.model_code
 
     @property
     def name(self) -> str:
@@ -533,8 +542,8 @@ class Mc5000Client(ChargerClient):
                 return None
         return None
 
-    @staticmethod
-    def _parse_device_info(resp: bytes, address: str = "") -> DeviceData | None:
+    @classmethod
+    def _parse_device_info(cls, resp: bytes, address: str = "") -> DeviceData | None:
         """Decode the 0x57 answer the way the app does.
 
         The answer is 20 bytes, or 21 when the link negotiated a larger MTU
@@ -549,14 +558,15 @@ class Mc5000Client(ChargerClient):
         block = resp[3 + shift : 19 + shift].hex()
         firmware = f"{resp[14 + shift]}.{resp[15 + shift]:02d}"
 
-        if model_code != MC5000_MODEL_CODE:
-            _LOGGER.debug("MC5000: unexpected model code %s", model_code.hex())
+        if model_code != cls.MODEL_CODE:
+            _LOGGER.debug("%s: unexpected model code %s", cls.MODEL_NAME, model_code.hex())
 
         return DeviceData(
-            name="SkyRC MC5000",
+            name=f"SkyRC {cls.MODEL_NAME}",
             address=address,
             manufacturer="SkyRC",
-            model="MC5000",
+            model=cls.MODEL_NAME,
+            model_code=model_code.decode("ascii", errors="replace"),
             sw_version=firmware,
             hw_version=block[27:28] or None,
         )
