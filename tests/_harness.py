@@ -61,6 +61,10 @@ class FakeBleakClient:
         self.is_connected = False
 
 
+class HomeAssistantError(Exception):
+    pass
+
+
 class BleakError(Exception):
     pass
 
@@ -96,6 +100,8 @@ def _install_stubs() -> None:
     bluetooth.async_discovered_service_info = lambda *args, **kwargs: []
     config_entries = types.ModuleType("homeassistant.config_entries")
     config_entries.ConfigEntry = object
+    exceptions = types.ModuleType("homeassistant.exceptions")
+    exceptions.HomeAssistantError = HomeAssistantError
     core = types.ModuleType("homeassistant.core")
     core.HomeAssistant = object
     helpers = types.ModuleType("homeassistant.helpers")
@@ -106,6 +112,7 @@ def _install_stubs() -> None:
     homeassistant.components = components
     homeassistant.config_entries = config_entries
     homeassistant.core = core
+    homeassistant.exceptions = exceptions
     homeassistant.helpers = helpers
     components.bluetooth = bluetooth
     helpers.update_coordinator = update_coordinator
@@ -122,6 +129,7 @@ def _install_stubs() -> None:
         "homeassistant.components.bluetooth": bluetooth,
         "homeassistant.config_entries": config_entries,
         "homeassistant.core": core,
+        "homeassistant.exceptions": exceptions,
         "homeassistant.helpers": helpers,
         "homeassistant.helpers.update_coordinator": update_coordinator,
         "skyrc_ble": skyrc_ble,

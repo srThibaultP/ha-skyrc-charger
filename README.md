@@ -57,7 +57,7 @@ and so on.
 
 For each of the four slots:
 `sensor.*_status`, `*_battery_type`, `*_mode`, `*_voltage`, `*_current`,
-`*_capacity`, `*_internal_resistance`, `*_elapsed_time`,
+`*_capacity`, `*_internal_resistance`, `*_elapsed_time`, `*_temperature`,
 `select.*_expected_chemistry`, `button.*_start`, `button.*_stop`.
 
 Only the sensors a model actually reports are created, so an MC5000 gets
@@ -66,9 +66,8 @@ none of the MC3000-only ones below.
 Device-level: `button.*_refresh`,
 `button.*_start_all`, `button.*_stop_all`.
 
-MC3000 only: the per-slot `sensor.*_temperature` and `*_cycle_count` (the
-MC5000 reports no slot temperature: the field stays at 0, even while
-charging), `sensor.*_input_voltage`, plus the diagnostic
+MC3000 only: the per-slot `sensor.*_cycle_count`, `sensor.*_input_voltage`,
+plus the diagnostic
 `*_temperature_unit`, `*_display_mode`, `*_cooling_fan_mode`,
 `*_system_beep` and `*_screensaver` sensors.
 
@@ -80,10 +79,16 @@ after about 40 minutes), and the curve comes back in pages of 100 samples.
 
 MC5000 only: the per-slot `sensor.*_error` (`none`, or the fault the charger
 reports: `reversed_polarity`, `wrong_battery_type`, `capacity_limit`, …) and
-the diagnostic `*_beep_volume`, `*_notification_volume`,
-`*_end_notification`, `*_backlight`, `*_warning_tone` and `*_sleep_timer`
-sensors, read from the charger's settings on every connection. The firmware
-and hardware versions show on the device page.
+the charger's own settings, which you can change from Home Assistant:
+`select.*_beep_volume`, `*_notification_volume` (off, low, medium, high),
+`*_end_notification` (once, repeat), `*_backlight` (low, medium, high),
+`*_sleep_timer` (off, 1 to 120 min) and `switch.*_warning_tone`. They are
+read when the connection opens, written back all at once and checked by
+reading them again. The firmware and hardware versions show on the device
+page.
+
+The MC5000 reports a slot's temperature only when an external probe is
+plugged in, so `sensor.*_temperature` is created but disabled by default.
 
 On the MC5000 the status is one of `empty`, `idle`, `standby`, `charging`,
 `discharging`, `resting`, `done` or `error`. Battery type, mode, current,

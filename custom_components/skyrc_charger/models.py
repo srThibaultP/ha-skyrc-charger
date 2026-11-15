@@ -85,6 +85,8 @@ class ChargerClient:
     supports_voltage_curves: bool = False
     #: Whether a complete charging program can be written to a slot.
     supports_programs: bool = False
+    #: Whether the charger's own settings (beeps, backlight, ...) can be written.
+    supports_settings: bool = False
 
     @property
     def is_connected(self) -> bool:
@@ -144,6 +146,10 @@ class ChargerClient:
 
     async def async_get_voltage_curve(self, channel: int) -> VoltageCurve:
         """Read back the logged voltage curve for one slot."""
+        raise NotImplementedError
+
+    async def async_set_settings(self, **changes) -> None:
+        """Change the charger's own settings (see the driver for the keys)."""
         raise NotImplementedError
 
     async def write_program(self, channel: int, program: dict) -> None:
