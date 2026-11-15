@@ -142,6 +142,9 @@ example 3000 mAh at 3000 mA for a lithium cell, 3000 mAh at 1000 mA for NiMH,
 voltages to a range per chemistry (for example 4.05 to 4.25 V for a Li-ion
 target); a value outside it is refused.
 
+A slot that already runs a program is refused: the charger acknowledges a new
+program for a running slot but keeps the old one going, so stop it first.
+
 There is no default chemistry: a start is refused until one is given, either
 in the call or through the select. The modes depend on it too, and a mode
 the chemistry doesn't have is refused:

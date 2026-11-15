@@ -40,6 +40,9 @@ DIRECT_SCAN_INTERVAL = 300.0
 # presenting hours-old readings as current.
 STALE_AFTER_FAILURES = 30
 
+# Slot statuses of a program in progress.
+RUNNING_STATUSES = ("charging", "discharging", "resting")
+
 # While an outage lasts, repeat the warning about it at most once an hour.
 FAILURE_REMINDER_SECONDS = 3600.0
 
@@ -135,6 +138,20 @@ class SkyrcChargerCoordinator(DataUpdateCoordinator):
     @property
     def consecutive_failures(self) -> int:
         return self._consecutive_failures
+
+    def running_slots(self, slots) -> list[int]:
+        """Which of these slots (numbered from 1) have a program running.
+
+        The charger acknowledges a new program for a running slot but keeps
+        the old one going, so a start has to be refused up front.
+        """
+        channels = (self.data or {}).get("channels") or []
+        return [
+            slot
+            for slot in slots
+            if 0 < slot <= len(channels)
+            and getattr(channels[slot - 1], "status", None) in RUNNING_STATUSES
+        ]
 
     # ------------------------------------------------------------------
     # Device discovery
