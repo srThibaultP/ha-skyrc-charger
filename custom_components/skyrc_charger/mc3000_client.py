@@ -170,6 +170,7 @@ class Mc3000Client(Mc5000Client):
         if resp is None or len(resp) < FRAME_SIZE:
             return None
 
+        code = resp[3:9]
         firmware = (resp[14] * 100 + resp[15]) / 100
         hardware = resp[16] * 10 / 100
         return DeviceData(
@@ -177,6 +178,8 @@ class Mc3000Client(Mc5000Client):
             address=address,
             manufacturer="SkyRC",
             model=self.MODEL_NAME,
+            # The NC2600 gives its model code here; the MC3000 does not.
+            model_code=code.decode("ascii") if code.isdigit() else None,
             sw_version=f"{firmware:.2f}",
             hw_version=f"{hardware:.2f}",
         )
