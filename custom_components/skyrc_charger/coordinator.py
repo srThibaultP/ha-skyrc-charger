@@ -27,6 +27,7 @@ from .const import (
     DOMAIN,
     LEGACY_BY_KEY,
     MODEL_BD380,
+    MODEL_MC3000,
     MODEL_MC5000,
     MODEL_NC2200,
     MODEL_NC3000,
@@ -39,6 +40,7 @@ from .const import (
     default_passcode,
 )
 from .legacy_client import make_legacy_client
+from .mc3000_client import Mc3000Client
 from .mc5000_client import Mc5000Client
 from .models import ChargerClient, ChargerState
 from .nc2200_client import Nc2200Client
@@ -52,6 +54,7 @@ type SkyrcConfigEntry = ConfigEntry[SkyrcCoordinator]
 
 CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
     MODEL_BD380: Bd380Client,
+    MODEL_MC3000: Mc3000Client,
     MODEL_MC5000: Mc5000Client,
     MODEL_NC2200: Nc2200Client,
     MODEL_NC3000: Nc3000Client,

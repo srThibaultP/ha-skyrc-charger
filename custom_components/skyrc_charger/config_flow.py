@@ -28,6 +28,7 @@ from .const import (
     DOMAIN,
     MC5000_BLE_NAME_PATTERNS,
     MODEL_BY_CODE,
+    MODEL_MC3000,
     MODEL_NAMES,
     MODEL_PSU650,
     OPTION_PASSCODE,
@@ -35,6 +36,7 @@ from .const import (
     default_passcode,
 )
 from .coordinator import CLIENTS
+from .mc3000_client import Mc3000Client
 from .mc5000_client import Mc5000Client
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,6 +86,18 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
                 return "cannot_connect", None, passcode
 
             model = MODEL_BY_CODE.get(code or "")
+            if model is None:
+                # The MC3000 gives no model code: it is the one that answers
+                # the info request in its own frame.
+                old = Mc3000Client(device)
+                try:
+                    await old.connect(probe=True)
+                    if old.identified:
+                        model = MODEL_MC3000
+                    await old.disconnect()
+                except (BleakError, TimeoutError, OSError) as err:
+                    _LOGGER.debug("Could not connect to %s: %r", address, err)
+                    return "cannot_connect", None, passcode
         if model is None:
             _LOGGER.warning("Unsupported SkyRC model at %s", address)
             return "unsupported_model", None, passcode

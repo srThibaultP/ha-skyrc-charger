@@ -517,7 +517,7 @@ class Mc5000Client(ChargerClient):
         if client is None:
             raise BleakError("MC5000 not connected")
 
-        packet = _build_packet(command, data)
+        packet = self._frame(command, data)
         # drain stale notifications
         while not self._notify_queue.empty():
             self._notify_queue.get_nowait()
@@ -536,6 +536,16 @@ class Mc5000Client(ChargerClient):
             _LOGGER.debug("MC5000: no response to command 0x%02x", command)
             return None
 
+    @staticmethod
+    def _frame(command: int, data: bytes) -> bytes:
+        """The bytes of a command (the MC3000 frames it differently)."""
+        return _build_packet(command, data)
+
+    @staticmethod
+    def _answers(resp: bytes, command: int) -> bool:
+        """Whether a notification is the answer to that command."""
+        return len(resp) > 2 and resp[2] == command
+
     async def _request(
         self, command: int, data: bytes = b"", timeout: float = NOTIFY_TIMEOUT
     ) -> bytes | None:
@@ -547,7 +557,7 @@ class Mc5000Client(ChargerClient):
         """
         resp = await self._send(command, data, timeout=timeout)
         for _ in range(3):
-            if resp is None or (len(resp) > 2 and resp[2] == command):
+            if resp is None or self._answers(resp, command):
                 return resp
             _LOGGER.debug("MC5000: skipping unrelated notification %s", resp.hex())
             try:

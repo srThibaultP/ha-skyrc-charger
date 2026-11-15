@@ -23,7 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from .const import MODEL_BD380, MODEL_MC5000, MODEL_PSU650
+from .const import MODEL_BD380, MODEL_MC3000, MODEL_MC5000, MODEL_PSU650
 from .coordinator import SkyrcConfigEntry, SkyrcCoordinator
 from .entity import SkyrcEntity
 from .models import ChannelData, DeviceData
@@ -62,7 +62,7 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         key="battery_type",
         translation_key="battery_type",
         icon="mdi:battery",
-        models=frozenset({MODEL_MC5000}),
+        models=frozenset({MODEL_MC3000, MODEL_MC5000}),
         value_fn=lambda slot: slot.chemistry,
     ),
     SlotSensorDescription(

@@ -9,16 +9,15 @@ chargers over BLE, from what the official SkyRC app does.
 | **NC2200** | Experimental, **monitoring and stop only**: no settings and no curve either (the app reads them from it with other commands). Written from the app, not tested on a charger. |
 | **NC3000** | Experimental, **monitoring and stop only**, written from the app and not tested on a charger. Starting a slot is refused until its program has been checked. |
 | **NC3000 Octa** (8 slots) | Experimental, **monitoring and stop only**, same limits as the NC3000. The app knows it by its model code `100228`. |
+| **MC3000** | Experimental, **monitoring, stop and voltage curve**, written from the MC3000 app and not tested on a charger. Another, older protocol (20-byte frames, no password): per slot the status, battery type, mode, voltage, current, capacity, time, temperature, resistance and errors. It is recognised by the answer it gives, not by a model code. Starting a slot and its settings are not offered. |
 | **BD380** (discharger) | Experimental, **monitoring and stop only**, written from the app and not tested on a device. One "slot": its state, the mode it holds constant (current, voltage, power or resistance), voltage, current, power, energy, capacity, elapsed time and temperature. Its password is the app's default, `5793`. |
 | **PSU650** (power supply) | Experimental, **monitoring only**, written from the app and not tested on a device. Recognised by its Bluetooth name. Slot 1 is the DC output, slots 2 to 4 the three USB-C ports: status, voltage, current, power and the negotiated protocol, plus total power, total current and the error code. Nothing to start or stop; switching a port is not offered yet. Its password is `5793`. |
 | **Q200, Q200V2, Q200 neo, Q500 neo, D100, D200s, D200 Nex, D200 neo (metal), D260, D750 Ultra, D8neo, B6nano, B6evo, B6 nax** | Experimental, **monitoring and stop only**. These older chargers use another protocol: each channel is unlocked with a password (5793 unless you changed it) and reports whether it works, its voltage, current, capacity, time, temperature and resistance. The number of channels and the password flag are the ones of the list the app downloads from SkyRC. Not tested on a charger. |
 
 The model is recognised when the charger is added: it tells it itself.
 
-> **Version 2.0 dropped the MC3000.** The SkyRC app does not support it and its
-> support depended on a third-party library. If you still have an MC3000
-> entry, remove it; its entities will go. Version 1.x keeps working for the
-> MC3000.
+> **The MC3000 is back (experimental).** Version 2.0 dropped it, as the SkyRC app 2.94 does not
+> support it; it is now written from SkyRC's own MC3000 app (4.1.2), like the other models.
 
 ## Origins / credits
 

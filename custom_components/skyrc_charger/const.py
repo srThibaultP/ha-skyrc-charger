@@ -18,6 +18,7 @@ DEFAULT_NAME = "SkyRC Charger"
 
 MODEL_BD380 = "bd380"
 MODEL_MC5000 = "mc5000"
+MODEL_MC3000 = "mc3000"
 MODEL_NC2200 = "nc2200"
 MODEL_PSU650 = "psu650"
 MODEL_NC3000 = "nc3000"
@@ -58,6 +59,7 @@ LEGACY_BY_KEY = {model.key: model for model in LEGACY_MODELS}
 MODELS = {
     **{model.key: f"SkyRC {model.name} ({model.channels} channels)" for model in LEGACY_MODELS},
     MODEL_BD380: "SkyRC BD380 (discharger)",
+    MODEL_MC3000: "SkyRC MC3000 (4 slots)",
     MODEL_MC5000: "SkyRC MC5000 (4 slots)",
     MODEL_NC2200: "SkyRC NC2200 (4 slots)",
     MODEL_PSU650: "SkyRC PSU650 (power supply)",
@@ -81,6 +83,7 @@ MODEL_BY_CODE = {
 MODEL_NAMES = {
     **{model.key: f"SkyRC {model.name}" for model in LEGACY_MODELS},
     MODEL_BD380: "SkyRC BD380",
+    MODEL_MC3000: "SkyRC MC3000",
     MODEL_MC5000: "SkyRC MC5000",
     MODEL_NC2200: "SkyRC NC2200",
     MODEL_PSU650: "SkyRC PSU650",
@@ -91,6 +94,7 @@ MODEL_NAMES = {
 CHANNELS_BY_MODEL = {
     **{model.key: model.channels for model in LEGACY_MODELS},
     MODEL_BD380: 1,
+    MODEL_MC3000: 4,
     MODEL_MC5000: 4,
     MODEL_NC2200: 4,
     MODEL_PSU650: 4,
@@ -106,7 +110,7 @@ MODELS_WITH_START = {MODEL_MC5000}
 MODELS_WITHOUT_STOP = {MODEL_PSU650}
 
 # Models that can give a slot's logged voltage curve.
-MODELS_WITH_CURVE = {MODEL_MC5000, MODEL_NC3000, MODEL_TYPE228}
+MODELS_WITH_CURVE = {MODEL_MC3000, MODEL_MC5000, MODEL_NC3000, MODEL_TYPE228}
 
 MAX_CHANNELS = max(CHANNELS_BY_MODEL.values())
 
@@ -115,6 +119,8 @@ MAX_CHANNELS = max(CHANNELS_BY_MODEL.values())
 # they are only used to *suggest* devices in the config flow, never to
 # silently connect to whatever happens to be nearby.
 MC5000_BLE_NAME_PATTERNS = ("mc5000", "skyrc", "#charger", "telinkse", "charger", "psu650")
+
+# The MC3000 gives no model code: the app tells it by its own protocol.
 
 # The app tells the PSU650 by its Bluetooth name, not by a model code.
 PSU650_NAME_FRAGMENT = "PSU650"

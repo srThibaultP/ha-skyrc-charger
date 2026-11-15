@@ -1188,5 +1188,151 @@ class Psu650Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client._client.writes, [])
 
 
+mc3000 = load("mc3000_client")
+Mc3000Client = mc3000.Mc3000Client
+
+
+def _mc3000_status(btype: int = 3, mode: int = 0, state: int = 1, **fields) -> bytes:
+    packet = bytearray(20)
+    packet[0], packet[1], packet[2] = 0x0F, 0x55, fields.get("slot", 0)
+    packet[3], packet[4], packet[5], packet[6] = btype, mode, 2, state
+    packet[7:9] = fields.get("seconds", 600).to_bytes(2, "big")
+    packet[9:11] = fields.get("mv", 1325).to_bytes(2, "big")
+    packet[11:13] = fields.get("ma", 1000).to_bytes(2, "big")
+    packet[13:15] = fields.get("mah", 250).to_bytes(2, "big")
+    packet[15] = fields.get("temp", 25)
+    packet[16:18] = fields.get("mohm", 60).to_bytes(2, "big")
+    packet[19] = sum(packet[:19]) & 0xFF
+    return bytes(packet)
+
+
+class Mc3000Test(unittest.IsolatedAsyncioTestCase):
+    def test_a_frame_is_twenty_bytes_and_sums_itself(self) -> None:
+        # What the app sends to read slot 0 and slot 1, and to stop slot 2.
+        self.assertEqual(Mc3000Client._frame(0x55, bytes([0])), bytes([15, 85] + [0] * 17 + [100]))
+        self.assertEqual(Mc3000Client._frame(0x55, bytes([1]))[-1], 101)
+        self.assertEqual(Mc3000Client._frame(0xFE, bytes([2]))[:3], bytes([15, 0xFE, 2]))
+        self.assertEqual(len(Mc3000Client._frame(0xFE, bytes([2]))), 20)
+
+    def test_an_answer_is_told_by_the_second_byte(self) -> None:
+        self.assertTrue(Mc3000Client._answers(_mc3000_status(), 0x55))
+        self.assertFalse(Mc3000Client._answers(_mc3000_status(), 0x57))
+
+    def test_a_charging_nimh_slot(self) -> None:
+        slot = Mc3000Client(FakeDevice())._parse_slot(0, _mc3000_status())
+
+        self.assertEqual(
+            (slot.status, slot.chemistry, slot.mode, slot.voltage, slot.current),
+            ("charging", "nimh", "charge", 1.325, 1.0),
+        )
+        self.assertEqual(
+            (slot.capacity, slot.time, slot.temperature, slot.resistance), (250, 600, 25.0, 60.0)
+        )
+
+    def test_the_mode_depends_on_the_battery_type(self) -> None:
+        client = Mc3000Client(FakeDevice())
+
+        nickel = client._parse_slot(0, _mc3000_status(btype=3, mode=2))
+        lithium = client._parse_slot(0, _mc3000_status(btype=0, mode=2))
+        zinc = client._parse_slot(0, _mc3000_status(btype=5, mode=2))
+
+        self.assertEqual(
+            (nickel.mode, lithium.mode, zinc.mode), ("break_in", "storage", "discharge")
+        )
+
+    def test_a_standby_slot_reports_no_run(self) -> None:
+        slot = Mc3000Client(FakeDevice())._parse_slot(0, _mc3000_status(state=0, mv=0, ma=0))
+
+        self.assertEqual(
+            (slot.status, slot.mode, slot.capacity, slot.time), ("standby", None, None, None)
+        )
+
+    def test_an_error_state_is_named(self) -> None:
+        slot = Mc3000Client(FakeDevice())._parse_slot(0, _mc3000_status(state=139))
+
+        self.assertEqual((slot.status, slot.error), ("error", "reversed_polarity"))
+
+    def test_an_unavailable_resistance_is_left_out(self) -> None:
+        slot = Mc3000Client(FakeDevice())._parse_slot(0, _mc3000_status(mohm=65535))
+
+        self.assertIsNone(slot.resistance)
+
+    def test_fahrenheit_is_converted(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        client._fahrenheit = True
+
+        self.assertEqual(client._parse_slot(0, _mc3000_status(temp=77)).temperature, 25.0)
+
+    def test_frames_are_cut_at_twenty_bytes_and_a_curve_at_245(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        frame = _mc3000_status()
+        curve = bytes([0x0F, 0x56]) + bytes(243)
+
+        client._notify_handler(None, bytearray(frame[:7]))
+        self.assertTrue(client._notify_queue.empty())
+        client._notify_handler(None, bytearray(frame[7:] + curve[:100]))
+        client._notify_handler(None, bytearray(curve[100:]))
+
+        self.assertEqual(client._notify_queue.get_nowait(), frame)
+        self.assertEqual(len(client._notify_queue.get_nowait()), 245)
+
+    async def test_the_curve(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        client._client = _harness_client()
+        client._connected = True
+        page = bytearray(245)
+        page[0], page[1], page[2] = 0x0F, 0x56, 1
+        page[3:5] = (30).to_bytes(2, "big")
+        page[5:7] = (1300).to_bytes(2, "big")
+        page[7:9] = (1310).to_bytes(2, "big")
+        client._notify_queue.put_nowait(bytes(page))
+
+        async def fake_request(*_args, **_kwargs):
+            return client._notify_queue.get_nowait()
+
+        client._request = fake_request  # type: ignore[method-assign]
+        curve = await client.async_get_voltage_curve(1)
+
+        self.assertEqual((curve.interval_seconds, len(curve.samples_mv)), (30, 120))
+        self.assertEqual(curve.samples_mv[:2], [1300, 1310])
+
+    async def test_the_firmware_and_the_slots_are_read(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        replies = {
+            0x57: bytes([0x0F, 0x57] + [0] * 12 + [1, 83, 12] + [0] * 3),
+            0x55: _mc3000_status(),
+        }
+        asked: list[tuple[int, bytes]] = []
+
+        async def fake_request(command, data=b"", timeout=0):
+            asked.append((command, data))
+            return replies.get(command)
+
+        client._request = fake_request  # type: ignore[method-assign]
+        info = await client._query_device_info()
+
+        self.assertEqual((info.sw_version, info.hw_version), ("1.83", "1.20"))
+        # The Bluetooth address goes in, last byte first, from byte 3.
+        self.assertEqual(asked[0], (0x57, b"\x00" + bytes.fromhex("FFEEDDCCBBAA")))
+
+    async def test_nothing_to_start_and_stop_names_the_slot_by_its_index(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        sent: list[tuple[int, bytes]] = []
+
+        async def fake_request(command, data=b"", timeout=0):
+            sent.append((command, data))
+
+        client._request = fake_request  # type: ignore[method-assign]
+        await client.stop_channel(2)
+
+        self.assertEqual(sent, [(0xFE, bytes([2]))])
+        with self.assertRaises(ValueError):
+            await client.start_channel(0)
+
+
+def _harness_client():
+    return FakeBleakClient()
+
+
 if __name__ == "__main__":
     unittest.main()
