@@ -107,6 +107,16 @@ def _get_expected_chemistry(hass: HomeAssistant, entry_id: str, slot: int) -> st
     return "any" if value in ("unknown", "unavailable", "") else value
 
 
+def _refuse_running(coordinator, slots) -> None:
+    running = coordinator.running_slots(slots)
+    if running:
+        names = ", ".join(str(slot) for slot in running)
+        raise HomeAssistantError(
+            f"Slot {names} already runs a program; stop it first, the charger would "
+            "ignore a new program"
+        )
+
+
 def _start_kwargs(call: ServiceCall, expected_chemistry: str) -> dict:
     kwargs: dict = {}
 
@@ -187,6 +197,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         charger, coordinator = await connected(call)
 
         await coordinator.async_request_refresh()
+        _refuse_running(coordinator, [slot])
         expected = _get_expected_chemistry(hass, entry_id_for(call), slot)
 
         kwargs = _start_kwargs(call, expected)
@@ -210,6 +221,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         entry_id = entry_id_for(call)
 
         await coordinator.async_request_refresh()
+        _refuse_running(coordinator, range(1, coordinator.channel_count + 1))
 
         # Each slot keeps its own declared chemistry rather than inheriting
         # whatever the last one happened to be.
