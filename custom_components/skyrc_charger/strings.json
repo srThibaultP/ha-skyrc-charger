@@ -159,9 +159,9 @@
         "state": {
           "off": "Off",
           "auto": "Auto",
-          "1 min": "1 min",
-          "3 min": "3 min",
-          "5 min": "5 min",
+          "1_min": "1 min",
+          "3_min": "3 min",
+          "5_min": "5 min",
           "always_on": "Always on"
         }
       },

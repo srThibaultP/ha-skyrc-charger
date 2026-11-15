@@ -127,7 +127,7 @@ TEMPERATURE_C = (20, 45, 70)
 TIMER_MINUTES = (0, 0, 1440)
 
 # The charger's basic settings (0x61 read, 0x63 write).
-DISPLAY_OPTIONS = ("off", "auto", "1 min", "3 min", "5 min", "always_on")
+DISPLAY_OPTIONS = ("off", "auto", "1_min", "3_min", "5_min", "always_on")
 FAN_OPTIONS = ("auto", "off", "on", "20", "25", "30", "35", "40", "45", "50")
 INPUT_MV = (10000, 11000, 12000)
 

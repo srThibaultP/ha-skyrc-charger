@@ -1491,7 +1491,7 @@ class Mc3000ProgramTest(unittest.IsolatedAsyncioTestCase):
 
         client._request = fake_request  # type: ignore[method-assign]
         with unittest.mock.patch("asyncio.sleep", new=_no_sleep):
-            await client.async_set_settings(beep=False, display_timeout="3 min", input_voltage=11.5)
+            await client.async_set_settings(beep=False, display_timeout="3_min", input_voltage=11.5)
 
         write = next(data for command, data in sent if command == 0x63)
         # 0x63 data from byte 2: unit, beep, display, screensaver, fan, input (mV).
