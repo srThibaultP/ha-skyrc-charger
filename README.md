@@ -57,14 +57,18 @@ and so on.
 
 For each of the four slots:
 `sensor.*_status`, `*_battery_type`, `*_mode`, `*_voltage`, `*_current`,
-`*_capacity`, `*_temperature`, `*_internal_resistance`, `*_elapsed_time`,
-`*_cycle_count`, `select.*_expected_chemistry`, `button.*_start`,
-`button.*_stop`.
+`*_capacity`, `*_internal_resistance`, `*_elapsed_time`,
+`select.*_expected_chemistry`, `button.*_start`, `button.*_stop`.
+
+Only the sensors a model actually reports are created, so an MC5000 gets
+none of the MC3000-only ones below.
 
 Device-level: `button.*_refresh`,
 `button.*_start_all`, `button.*_stop_all`.
 
-MC3000 only: `sensor.*_input_voltage`, plus the diagnostic
+MC3000 only: the per-slot `sensor.*_temperature` and `*_cycle_count` (the
+MC5000 reports no slot temperature: the field stays at 0, even while
+charging), `sensor.*_input_voltage`, plus the diagnostic
 `*_temperature_unit`, `*_display_mode`, `*_cooling_fan_mode`,
 `*_system_beep` and `*_screensaver` sensors, the per-slot
 `sensor.*_voltage_curve_points` / `button.*_fetch_voltage_curve` pair and
