@@ -27,7 +27,32 @@ async def async_setup_entry(
         entities.append(AutoFetchCurvesSwitch(coordinator))
     if coordinator.supports_settings:
         entities.append(WarningToneSwitch(coordinator))
+    if coordinator.has_basic_settings:
+        entities.extend(BasicSettingSwitch(coordinator, key) for key in ("beep", "screensaver"))
     async_add_entities(entities)
+
+
+class BasicSettingSwitch(SkyrcEntity, SwitchEntity):
+    """A switch among the MC3000's own settings."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: SkyrcCoordinator, key: str) -> None:
+        super().__init__(coordinator, key)
+        self._key = key
+        self._attr_translation_key = key
+        self._attr_icon = "mdi:volume-high" if key == "beep" else "mdi:monitor-star"
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.data
+        return getattr(data.device, self._key) if data else None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.async_set_settings(**{self._key: True})
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.async_set_settings(**{self._key: False})
 
 
 class WarningToneSwitch(SkyrcEntity, SwitchEntity):

@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from .conftest import ADDRESS, FakeClient, make_entry
 
 
-async def test_it_reports_its_slots_and_offers_nothing_to_stop(
+async def test_it_reports_its_slots_and_starts_but_cannot_stop(
     hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
 ) -> None:
     client.channels = [
@@ -32,7 +32,9 @@ async def test_it_reports_its_slots_and_offers_nothing_to_stop(
     assert hass.states.get("sensor.skyrc_nc2600_slot_1_voltage").state == "1.31"
     assert hass.states.get("sensor.skyrc_nc2600_slot_4_status").state == "empty"
     assert hass.states.get("button.skyrc_nc2600_slot_1_stop") is None
-    assert hass.states.get("button.skyrc_nc2600_slot_1_start") is None
+    assert hass.states.get("button.skyrc_nc2600_slot_1_start") is not None
+    assert hass.states.get("select.skyrc_nc2600_slot_1_expected_chemistry") is None
+    assert hass.states.get("select.skyrc_nc2600_display_timeout") is None
     assert hass.states.get("sensor.skyrc_nc2600_slot_1_battery_type") is None
 
 

@@ -153,6 +153,23 @@
       },
       "sleep_timer": {
         "name": "Sleep Timer"
+      },
+      "display_timeout": {
+        "name": "Display Timeout",
+        "state": {
+          "off": "Off",
+          "auto": "Auto",
+          "1_min": "1 min",
+          "3_min": "3 min",
+          "5_min": "5 min",
+          "always_on": "Always on"
+        }
+      },
+      "cooling_fan": {
+        "name": "Cooling Fan (°C or mode)"
+      },
+      "input_voltage": {
+        "name": "Input Voltage Limit"
       }
     },
     "switch": {
@@ -161,6 +178,12 @@
       },
       "auto_fetch_voltage_curves": {
         "name": "Auto Fetch Voltage Curves"
+      },
+      "beep": {
+        "name": "Keypress Beep"
+      },
+      "screensaver": {
+        "name": "Screensaver"
       }
     }
   },
