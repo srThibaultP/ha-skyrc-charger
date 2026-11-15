@@ -1,6 +1,6 @@
 # Lovelace view for an MC5000: the status of each slot, the charger's settings and
 # buttons that start a charge with presets for Amazon Basics NiMH cells (AA 2400
-# mAh at 1000 mA, AAA 800 mAh at 400 mA). Paste it in a dashboard's raw editor
+# mAh at 1000 mA, AAA 850 mAh at 400 mA). Paste it in a dashboard's raw editor
 # under "views:". The entity ids assume the charger is named "SkyRC MC5000";
 # replace "skyrc_mc5000" if yours is named differently.
 views:
@@ -18,7 +18,7 @@ views:
       icon: mdi:battery-charging-high
       heading_style: title
     - type: markdown
-      content: 'Amazon Basics NiMH presets: **AA** 2400 mAh at 1000 mA, **AAA** 800 mAh at 400 mA. Put
+      content: 'Amazon Basics NiMH presets: **AA** 2400 mAh at 1000 mA, **AAA** 850 mAh at 400 mA. Put
         the cell in, then press the button of its slot.'
     - type: tile
       entity: button.skyrc_mc5000_stop_all
@@ -224,7 +224,7 @@ views:
           text: Start a NiMH charge for AA 2400 mAh at 1000 mA on slot 1?
     - type: tile
       entity: sensor.skyrc_mc5000_slot_1_status
-      name: Charge AAA 800 mAh
+      name: Charge AAA 850 mAh
       icon: mdi:battery-charging-30
       hide_state: true
       vertical: false
@@ -239,9 +239,9 @@ views:
           chemistry: nimh
           mode: charge
           current_ma: 400
-          capacity_mah: 800
+          capacity_mah: 850
         confirmation:
-          text: Start a NiMH charge for AAA 800 mAh at 400 mA on slot 1?
+          text: Start a NiMH charge for AAA 850 mAh at 400 mA on slot 1?
     - type: tile
       entity: button.skyrc_mc5000_slot_1_stop
       name: Stop
@@ -394,7 +394,7 @@ views:
           text: Start a NiMH charge for AA 2400 mAh at 1000 mA on slot 2?
     - type: tile
       entity: sensor.skyrc_mc5000_slot_2_status
-      name: Charge AAA 800 mAh
+      name: Charge AAA 850 mAh
       icon: mdi:battery-charging-30
       hide_state: true
       vertical: false
@@ -409,9 +409,9 @@ views:
           chemistry: nimh
           mode: charge
           current_ma: 400
-          capacity_mah: 800
+          capacity_mah: 850
         confirmation:
-          text: Start a NiMH charge for AAA 800 mAh at 400 mA on slot 2?
+          text: Start a NiMH charge for AAA 850 mAh at 400 mA on slot 2?
     - type: tile
       entity: button.skyrc_mc5000_slot_2_stop
       name: Stop
@@ -564,7 +564,7 @@ views:
           text: Start a NiMH charge for AA 2400 mAh at 1000 mA on slot 3?
     - type: tile
       entity: sensor.skyrc_mc5000_slot_3_status
-      name: Charge AAA 800 mAh
+      name: Charge AAA 850 mAh
       icon: mdi:battery-charging-30
       hide_state: true
       vertical: false
@@ -579,9 +579,9 @@ views:
           chemistry: nimh
           mode: charge
           current_ma: 400
-          capacity_mah: 800
+          capacity_mah: 850
         confirmation:
-          text: Start a NiMH charge for AAA 800 mAh at 400 mA on slot 3?
+          text: Start a NiMH charge for AAA 850 mAh at 400 mA on slot 3?
     - type: tile
       entity: button.skyrc_mc5000_slot_3_stop
       name: Stop
@@ -734,7 +734,7 @@ views:
           text: Start a NiMH charge for AA 2400 mAh at 1000 mA on slot 4?
     - type: tile
       entity: sensor.skyrc_mc5000_slot_4_status
-      name: Charge AAA 800 mAh
+      name: Charge AAA 850 mAh
       icon: mdi:battery-charging-30
       hide_state: true
       vertical: false
@@ -749,9 +749,9 @@ views:
           chemistry: nimh
           mode: charge
           current_ma: 400
-          capacity_mah: 800
+          capacity_mah: 850
         confirmation:
-          text: Start a NiMH charge for AAA 800 mAh at 400 mA on slot 4?
+          text: Start a NiMH charge for AAA 850 mAh at 400 mA on slot 4?
     - type: tile
       entity: button.skyrc_mc5000_slot_4_stop
       name: Stop
