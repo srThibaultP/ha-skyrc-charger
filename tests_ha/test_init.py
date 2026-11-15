@@ -140,9 +140,9 @@ async def test_an_entry_of_a_dropped_model_says_why(
 ) -> None:
     config_entry = MockConfigEntry(
         domain=DOMAIN,
-        title="SkyRC MC3000",
-        unique_id="mc3000-AA:BB:CC:DD:EE:FF",
-        data={CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", "model": "mc3000"},
+        title="SkyRC MC3500",
+        unique_id="mc3500-AA:BB:CC:DD:EE:FF",
+        data={CONF_ADDRESS: "AA:BB:CC:DD:EE:FF", "model": "mc3500"},
     )
     config_entry.add_to_hass(hass)
 

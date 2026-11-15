@@ -49,6 +49,7 @@ class FakeClient(ChargerClient):
         self.connected = False
         self.unlocked: bool | None = True
         self.model_code: str | None = "100214"
+        self.identified = False
         self.passcode = "1234"
         self.fail: Exception | None = None
         self.calls: list[tuple[str, Any]] = []
@@ -127,6 +128,7 @@ def client() -> Generator[FakeClient]:
             {key: (lambda _: fake) for key in CHANNELS_BY_MODEL},
         ),
         patch("custom_components.skyrc_charger.config_flow.Mc5000Client", lambda _: fake),
+        patch("custom_components.skyrc_charger.config_flow.Mc3000Client", lambda _: fake),
     ):
         yield fake
 
