@@ -170,7 +170,7 @@
         },
         "slot": {
           "name": "Slot",
-          "description": "Slot number, 1 to 4."
+          "description": "Slot number, 1 to 4 (1 to 8 on the type 228)."
         },
         "chemistry": {
           "name": "Chemistry",
@@ -200,7 +200,7 @@
         },
         "slot": {
           "name": "Slot",
-          "description": "Slot number, 1 to 4."
+          "description": "Slot number, 1 to 4 (1 to 8 on the type 228)."
         }
       }
     },
@@ -250,7 +250,7 @@
         },
         "slot": {
           "name": "Slot",
-          "description": "Slot number, 1 to 4."
+          "description": "Slot number, 1 to 4 (1 to 8 on the type 228)."
         }
       }
     }

@@ -27,12 +27,14 @@ from .const import (
     DOMAIN,
     MODEL_MC5000,
     MODEL_NC3000,
+    MODEL_TYPE228,
     MODELS_WITH_START,
     OPTION_PASSCODE,
 )
 from .mc5000_client import Mc5000Client
 from .models import ChargerClient, ChargerState
 from .nc3000_client import Nc3000Client
+from .type228_client import Type228Client
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,10 +43,11 @@ type SkyrcConfigEntry = ConfigEntry[SkyrcCoordinator]
 CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
     MODEL_MC5000: Mc5000Client,
     MODEL_NC3000: Nc3000Client,
+    MODEL_TYPE228: Type228Client,
 }
 
 # The models whose own settings (beeps, backlight, ...) can be written.
-MODELS_WITH_SETTINGS = {MODEL_MC5000, MODEL_NC3000}
+MODELS_WITH_SETTINGS = {MODEL_MC5000, MODEL_NC3000, MODEL_TYPE228}
 
 POLL_INTERVAL = timedelta(seconds=10)
 MAX_BACKOFF = timedelta(minutes=5)
