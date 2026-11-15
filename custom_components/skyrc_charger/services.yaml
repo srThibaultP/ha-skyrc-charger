@@ -1,28 +1,15 @@
 refresh:
-  name: Refresh
-  description: Force an immediate data refresh.
   fields:
     entry_id: &entry_id
-      name: Charger
-      description: >
-        Which SkyRC charger to target. Optional while a single charger is
-        configured.
       required: false
       selector:
         config_entry:
           integration: skyrc_charger
 
 start_slot:
-  name: Start slot
-  description: >
-    Start charging/discharging a slot. A fresh program is written to the
-    charger, which starts the slot; you may override
-    chemistry/mode/current/capacity.
   fields:
     entry_id: *entry_id
     slot: &slot
-      name: Slot
-      description: Slot number, 1 to 4.
       required: true
       selector:
         number:
@@ -30,13 +17,10 @@ start_slot:
           max: 4
           mode: box
     chemistry: &chemistry
-      name: Chemistry (MC5000 only)
-      description: >
-        Chemistry written into the MC5000 program. Defaults to the slot's
-        "expected chemistry" select when that is not "any".
       required: false
       selector:
         select:
+          translation_key: chemistry
           options:
             - liion
             - liion_hv
@@ -49,14 +33,10 @@ start_slot:
             - lto
             - naion
     mode: &mode
-      name: Mode (MC5000 only)
-      description: >
-        Lithium cells take charge, storage, discharge or cycle; nickel cells
-        charge, refresh, break_in, discharge or cycle; NiZn and RAM cells
-        charge, discharge or cycle.
       required: false
       selector:
         select:
+          translation_key: mode
           options:
             - charge
             - storage
@@ -65,35 +45,28 @@ start_slot:
             - refresh
             - break_in
     current_ma: &current_ma
-      name: Current, mA (MC5000 only)
       required: false
       selector:
         number:
           min: 50
           max: 5000
+          unit_of_measurement: mA
           mode: box
     capacity_mah: &capacity_mah
-      name: Capacity, mAh (MC5000 only)
       required: false
       selector:
         number:
           min: 100
           max: 20000
+          unit_of_measurement: mAh
           mode: box
 
 stop_slot:
-  name: Stop slot
-  description: >
-    Stop one slot.
   fields:
     entry_id: *entry_id
     slot: *slot
 
 start_all:
-  name: Start all slots
-  description: >
-    Start every slot in one command, applying the same expected-chemistry
-    interlock as start_slot to each of them first.
   fields:
     entry_id: *entry_id
     chemistry: *chemistry
@@ -102,16 +75,10 @@ start_all:
     capacity_mah: *capacity_mah
 
 stop_all:
-  name: Stop all slots
-  description: Stop all slots.
   fields:
     entry_id: *entry_id
 
 fetch_voltage_curve:
-  name: Fetch voltage curve
-  description: >
-    Read back the voltage curve the charger logged for one slot. The samples
-    land on the slot's "Voltage Curve Points" sensor as attributes.
   fields:
     entry_id: *entry_id
     slot: *slot

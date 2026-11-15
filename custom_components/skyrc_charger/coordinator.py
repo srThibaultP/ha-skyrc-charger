@@ -1,534 +1,341 @@
+"""Polling of one SkyRC charger, and the commands that share its connection."""
+
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
 import time
+from typing import Any
+
+from bleak.exc import BleakError
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     CHANNELS_BY_MODEL,
+    CONF_ADDRESS,
+    CONF_MODEL,
     DEFAULT_PASSCODE,
     DOMAIN,
     MODEL_MC5000,
-    MODEL_NAMES,
     OPTION_PASSCODE,
 )
-from .mc5000_client import BLE_NAME_PATTERNS as MC5000_BLE_NAME_PATTERNS, Mc5000Client
-from .models import ChargerClient
+from .mc5000_client import Mc5000Client
+from .models import ChargerClient, ChargerState
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_TIMEOUT = 30.0
-UPDATE_INTERVAL = timedelta(seconds=10)
+type SkyrcConfigEntry = ConfigEntry[SkyrcCoordinator]
 
-# A direct BleakScanner sweep blocks for SCAN_TIMEOUT and fights Home
-# Assistant's own bluetooth manager for the adapter. It is only a safety net
-# for setups where HA doesn't know the charger yet, so run it sparingly
-# instead of on every failed poll.
-DIRECT_SCAN_INTERVAL = 300.0
+CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
+    MODEL_MC5000: Mc5000Client,
+}
 
-# Stale data is served while the charger is unreachable so the dashboard
-# doesn't flicker on the routine one-poll dropouts. After this many failures
-# in a row (~5 minutes) the entities go unavailable instead, rather than
-# presenting hours-old readings as current.
-STALE_AFTER_FAILURES = 30
+# The models whose own settings (beeps, backlight, ...) can be written.
+MODELS_WITH_SETTINGS = {MODEL_MC5000}
+
+POLL_INTERVAL = timedelta(seconds=10)
+MAX_BACKOFF = timedelta(minutes=5)
+# The charger drops its link now and then; a poll or two without an answer
+# keeps showing the last values rather than flipping every entity to
+# unavailable.
+TOLERATED_FAILURES = 3
+# With polling turned off (to leave the charger to the SkyRC app), a link
+# opened for a command is closed again after this long.
+IDLE_DISCONNECT = 60
+CURVE_REFRESH_SECONDS = 30
 
 # Slot statuses of a program in progress.
 RUNNING_STATUSES = ("charging", "discharging", "resting")
 
-# While an outage lasts, repeat the warning about it at most once an hour.
-FAILURE_REMINDER_SECONDS = 3600.0
-
-# Once the data has gone stale, a charger that is off or out of range is not
-# coming back within ten seconds: double the poll interval on every further
-# failure, up to this ceiling, and go back to UPDATE_INTERVAL on success.
-MAX_BACKOFF_INTERVAL = timedelta(minutes=5)
-
-CLIENT_BY_MODEL = {
-    MODEL_MC5000: Mc5000Client,
-}
-
-BLE_NAME_PATTERNS_BY_MODEL = {
-    MODEL_MC5000: MC5000_BLE_NAME_PATTERNS,
-}
+BLE_ERRORS = (BleakError, TimeoutError, OSError)
 
 
-def _name_matches(name: str, patterns: tuple[str, ...]) -> bool:
-    name_lower = (name or "").lower()
-    return any(pattern in name_lower for pattern in patterns)
+@dataclass(slots=True)
+class CurveData:
+    """The voltage curve of one slot, as last read from the charger."""
+
+    samples_mv: list[int]
+    interval_seconds: int | None
+    checksum_ok: bool | None
+    fetched_at: datetime
 
 
-class SkyrcChargerCoordinator(DataUpdateCoordinator):
-    """Coordinator that polls an MC5000 over BLE."""
+class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
+    """Owns the BLE link to one charger."""
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        address: str,
-        model: str,
-        device_name: str | None = None,
-        config_entry: ConfigEntry | None = None,
-    ) -> None:
-        # Passing the entry explicitly is what makes Home Assistant honour
-        # the entry's "polling disabled" system option and shut the
-        # coordinator down when the entry is unloaded.
+    config_entry: SkyrcConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: SkyrcConfigEntry) -> None:
         super().__init__(
             hass,
             _LOGGER,
-            config_entry=config_entry,
-            name=DOMAIN,
-            update_interval=UPDATE_INTERVAL,
+            config_entry=entry,
+            name=f"{DOMAIN} {entry.title}",
+            update_interval=POLL_INTERVAL,
         )
-        self.address = address
-        self.model = model
-        # Taken from the config entry title so it is stable from the very
-        # first setup: entity ids are derived from the device name, and one
-        # that only settles after the first successful poll would produce
-        # entity ids named after a charger we hadn't reached yet.
-        self.device_name = device_name or MODEL_NAMES.get(model, "SkyRC Charger")
-        self.channel_count = CHANNELS_BY_MODEL[model]
+        self.address: str = str(entry.data[CONF_ADDRESS]).upper()
+        self.model: str = entry.data.get(CONF_MODEL, MODEL_MC5000)
+        self.channel_count: int = CHANNELS_BY_MODEL[self.model]
 
-        self.charger: ChargerClient | None = None
-        self.passcode = DEFAULT_PASSCODE
-        if config_entry is not None:
-            self.passcode = config_entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE)
-        self._last_device = None
-        self._last_good_data = None
+        #: What the user says is in each slot (0-based), set by the selects.
+        self.expected_chemistry: dict[int, str] = {}
+        self.curves: dict[int, CurveData] = {}
+        self.auto_fetch_curves = False
 
-        # Noise control: these chargers drop their link constantly and every
-        # drop is recovered on the next poll. Log the transition into and out
-        # of a degraded state, not each of the ~360 failures an hour.
-        self._consecutive_failures = 0
-        self._last_failure_repr: str | None = None
-        self._last_failure_warning_monotonic = 0.0
-        self._last_fallback_address: str | None = None
-        self._last_direct_scan_monotonic = 0.0
-
-        # Voltage curves.
-        self.voltage_curves: dict[int, dict] = {}
-        self._last_slot_currents: dict[int, float | None] = {}
-        self._slot_current_zero_elapsed: dict[int, int | None] = {}
-
-        self.auto_fetch_voltage_curves = False
-        self.auto_fetch_voltage_curve_interval_seconds = 30
-        self._last_auto_fetch_voltage_curves_monotonic = 0.0
-
-    @property
-    def supports_voltage_curves(self) -> bool:
-        return CLIENT_BY_MODEL[self.model].supports_voltage_curves
-
-    @property
-    def available(self) -> bool:
-        """Whether the data being served is still worth showing."""
-        return self.last_update_success and self._consecutive_failures < STALE_AFTER_FAILURES
-
-    @property
-    def consecutive_failures(self) -> int:
-        return self._consecutive_failures
-
-    def running_slots(self, slots) -> list[int]:
-        """Which of these slots (numbered from 1) have a program running.
-
-        The charger acknowledges a new program for a running slot but keeps
-        the old one going, so a start has to be refused up front.
-        """
-        channels = (self.data or {}).get("channels") or []
-        return [
-            slot
-            for slot in slots
-            if 0 < slot <= len(channels)
-            and getattr(channels[slot - 1], "status", None) in RUNNING_STATUSES
-        ]
+        self._client: ChargerClient | None = None
+        self._lock = asyncio.Lock()
+        self._failures = 0
+        self._last_curve_fetch = 0.0
+        self._unsub_idle: CALLBACK_TYPE | None = None
 
     # ------------------------------------------------------------------
-    # Device discovery
+    # Connection
     # ------------------------------------------------------------------
 
-    def _find_device_via_ha_bluetooth(self):
-        """Ask Home Assistant's Bluetooth manager for a connectable device.
+    @property
+    def passcode(self) -> str:
+        return str(self.config_entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE))
 
-        This is the path that works with ESPHome/Shelly Bluetooth proxies and
-        that keeps the BLEDevice (and its connection route) fresh; the direct
-        Bleak scan below only sees locally attached adapters.
-        """
-        device = bluetooth.async_ble_device_from_address(
-            self.hass,
-            self.address.upper(),
-            connectable=True,
+    @property
+    def supports_settings(self) -> bool:
+        return self.model in MODELS_WITH_SETTINGS
+
+    def _unreachable(self) -> UpdateFailed:
+        """Explain why no connectable route to the charger exists."""
+        heard = bluetooth.async_last_service_info(self.hass, self.address, connectable=False)
+        if heard is None:
+            return UpdateFailed(f"No Bluetooth adapter or proxy can see {self.address}")
+        return UpdateFailed(
+            f"{self.address} is only heard by the passive Bluetooth scanner {heard.source} "
+            f"(RSSI {heard.rssi}), which cannot connect; bring an active Bluetooth proxy "
+            "or adapter within range"
         )
 
+    async def _async_connected_client(self) -> ChargerClient:
+        """Return a client with an open, unlocked link. Hold the lock."""
+        device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
         if device is None:
-            _LOGGER.debug(
-                "SkyRC %s: HA Bluetooth has no connectable device for %s",
-                self.model,
-                self.address,
-            )
+            raise self._unreachable()
 
-        return device
-
-    async def _find_device_via_bleak_fallback(self):
-        """Direct Bleak sweep, for setups HA's manager doesn't cover."""
-        from bleak import BleakScanner
-
-        now = time.monotonic()
-        if now - self._last_direct_scan_monotonic < DIRECT_SCAN_INTERVAL:
-            return None
-
-        self._last_direct_scan_monotonic = now
-        patterns = BLE_NAME_PATTERNS_BY_MODEL[self.model]
-
-        _LOGGER.debug("SkyRC %s: direct Bleak scan for %s", self.model, self.address)
-        devices = await BleakScanner.discover(timeout=SCAN_TIMEOUT)
-
-        fallback = None
-        for device in devices:
-            name = device.name or ""
-            address = device.address or ""
-
-            if address.upper() == self.address.upper():
-                return device
-
-            if _name_matches(name, patterns):
-                fallback = device
-
-        if fallback is None:
-            return None
-
-        # Only shout about a substitution the first time we settle on it;
-        # repeating it every poll is exactly the noise we're removing.
-        if self._last_fallback_address != fallback.address:
-            self._last_fallback_address = fallback.address
-            _LOGGER.warning(
-                "SkyRC %s: %s not found, falling back to look-alike device %s (%s)",
-                self.model,
-                self.address,
-                fallback.address,
-                fallback.name,
-            )
-
-        return fallback
-
-    async def _find_device(self):
-        device = self._find_device_via_ha_bluetooth()
-        if device is not None:
-            return device
-
-        try:
-            return await self._find_device_via_bleak_fallback()
-        except Exception as err:
-            _LOGGER.debug("SkyRC %s: direct Bleak fallback failed: %r", self.model, err)
-            return None
-
-    async def _ensure_charger(self) -> ChargerClient:
-        if self.charger is not None and self.charger.is_connected:
-            return self.charger
-
-        device = await self._find_device() or self._last_device
-        if device is None:
-            raise UpdateFailed(f"SkyRC {self.model} not found at {self.address}")
-
-        self._last_device = device
-
-        if self.charger is None:
-            self.charger = CLIENT_BY_MODEL[self.model](device)
-            self.charger.set_passcode(self.passcode)
+        if self._client is None:
+            self._client = CLIENTS[self.model](device)
+            self._client.set_passcode(self.passcode)
         else:
-            # Reconnecting with a stale BLEDevice is the classic cause of
-            # endless reconnect failures, so always hand over the newest one.
-            self.charger.set_ble_device(device)
+            # A stale BLEDevice is the usual cause of reconnect loops.
+            self._client.set_ble_device(device)
 
-        return self.charger
+        if not self._client.is_connected:
+            await self._client.connect()
 
-    async def async_connected_charger(self) -> ChargerClient:
-        """Return a connected client, for service calls and button presses."""
-        charger = await self._ensure_charger()
+        if getattr(self._client, "unlocked", None) is False:
+            raise ConfigEntryAuthFailed("The charger refused the passcode")
 
-        if not charger.is_connected:
-            await charger.connect()
+        return self._client
 
-        return charger
-
-    @property
-    def polling_disabled(self) -> bool:
-        """Whether the entry's "polling" system option is turned off.
-
-        That option is how to hand the charger over to the SkyRC app: it
-        takes one BLE client at a time, and with polling off Home Assistant
-        only connects when asked to (refresh, start, stop).
-        """
-        entry = self.config_entry
-        return bool(entry is not None and entry.pref_disable_polling)
-
-    # ------------------------------------------------------------------
-    # Voltage curves
-    # ------------------------------------------------------------------
-
-    def _track_current_transitions(self, data: dict) -> None:
-        """Remember when each slot's current last fell to zero.
-
-        The charger keeps logging curve samples after it has finished, so
-        knowing when the current stopped lets the dashboard trim the flat
-        tail off the plot.
-        """
-        for slot_index, channel in enumerate(data.get("channels") or []):
-            if channel is None:
-                continue
-
-            current = getattr(channel, "current", None)
-            if current is None:
-                continue
-
+    async def _async_drop_client(self) -> None:
+        """Close the link; the charger takes one client at a time."""
+        client, self._client = self._client, None
+        if client is not None:
             try:
-                current_value = float(current)
-            except (TypeError, ValueError):
-                continue
+                await client.disconnect()
+            except BLE_ERRORS as err:
+                _LOGGER.debug("Disconnecting from %s failed: %r", self.address, err)
 
-            elapsed = getattr(channel, "time", None)
-            previous_current = self._last_slot_currents.get(slot_index)
+    async def async_disconnect(self) -> None:
+        async with self._lock:
+            await self._async_drop_client()
 
-            if current_value > 0.001:
-                self._slot_current_zero_elapsed[slot_index] = None
-            elif previous_current is not None and previous_current > 0.001:
-                self._slot_current_zero_elapsed[slot_index] = (
-                    int(elapsed) if elapsed is not None else None
-                )
-                _LOGGER.debug(
-                    "SkyRC %s: slot %s current reached zero at elapsed=%s",
-                    self.model,
-                    slot_index + 1,
-                    self._slot_current_zero_elapsed[slot_index],
-                )
-
-            self._last_slot_currents[slot_index] = current_value
-
-    async def async_fetch_voltage_curve(self, slot_index: int) -> dict:
-        """Fetch the voltage curve for one slot on demand."""
-        if slot_index not in range(self.channel_count):
-            raise ValueError(f"Invalid slot index {slot_index}")
-
-        if not self.supports_voltage_curves:
-            raise UpdateFailed(f"SkyRC {self.model} does not expose voltage curves")
-
-        charger = await self.async_connected_charger()
-
-        try:
-            curve = await charger.async_get_voltage_curve(slot_index)
-        except Exception as err:
-            raise UpdateFailed(
-                f"SkyRC {self.model}: voltage curve fetch failed for slot {slot_index + 1}: {err!r}"
-            ) from err
-
-        samples_mv = list(curve.samples_mv)
-        nonzero = [value for value in samples_mv if value > 0]
-        nonzero_indices = [idx for idx, value in enumerate(samples_mv) if value > 0]
-        last_nonzero_index = nonzero_indices[-1] if nonzero_indices else None
-
-        stop_elapsed = self._slot_current_zero_elapsed.get(slot_index)
-        plot_until_index = last_nonzero_index
-        plot_reason = "last_nonzero_sample"
-
-        if stop_elapsed is not None and curve.interval_seconds and last_nonzero_index is not None:
-            estimated_stop_index = int(stop_elapsed / curve.interval_seconds)
-            if 0 < estimated_stop_index < last_nonzero_index:
-                plot_until_index = estimated_stop_index
-                plot_reason = "current_zero_elapsed"
-
-        result = {
-            "slot": slot_index + 1,
-            "channel": slot_index,
-            "sample_count": len(samples_mv),
-            "nonzero_sample_count": len(nonzero),
-            "min_nonzero_mv": min(nonzero) if nonzero else None,
-            "max_nonzero_mv": max(nonzero) if nonzero else None,
-            "interval_seconds": curve.interval_seconds,
-            "checksum_ok": curve.checksum_ok,
-            "current_zero_elapsed": stop_elapsed,
-            "plot_until_index": plot_until_index,
-            "plot_reason": plot_reason,
-            "samples_mv": samples_mv,
-            "samples_v": [round(value / 1000, 3) for value in samples_mv],
-            "last_fetched": datetime.now().isoformat(timespec="seconds"),
-        }
-
-        self.voltage_curves[slot_index] = result
-        self.async_update_listeners()
-
-        return result
-
-    async def async_set_auto_fetch_voltage_curves(self, enabled: bool) -> None:
-        self.auto_fetch_voltage_curves = bool(enabled)
-        self.async_update_listeners()
-
-        if enabled:
-            await self.async_auto_fetch_voltage_curves(force=True)
-
-    async def async_auto_fetch_voltage_curves(self, force: bool = False) -> None:
-        """Fetch curves for the slots that are currently working, throttled."""
-        if not self.auto_fetch_voltage_curves:
-            return
-
-        now = time.monotonic()
-        if (
-            not force
-            and now - self._last_auto_fetch_voltage_curves_monotonic
-            < self.auto_fetch_voltage_curve_interval_seconds
-        ):
-            return
-
-        if not self.data:
-            return
-
-        active_slots = []
-        for slot_index, channel in enumerate(self.data.get("channels") or []):
-            if channel is None:
-                continue
-            try:
-                current = float(getattr(channel, "current", 0) or 0)
-            except (TypeError, ValueError):
-                continue
-            if current > 0.001:
-                active_slots.append(slot_index)
-
-        if not active_slots:
-            return
-
-        self._last_auto_fetch_voltage_curves_monotonic = now
-
-        for slot_index in active_slots:
-            try:
-                await self.async_fetch_voltage_curve(slot_index)
-            except Exception as err:
-                _LOGGER.debug(
-                    "SkyRC %s: auto voltage curve fetch failed for slot %s: %r",
-                    self.model,
-                    slot_index + 1,
-                    err,
-                )
+    async def async_shutdown(self) -> None:
+        await super().async_shutdown()
+        self._cancel_idle()
+        await self.async_disconnect()
 
     # ------------------------------------------------------------------
     # Polling
     # ------------------------------------------------------------------
 
-    @property
-    def supports_settings(self) -> bool:
-        return CLIENT_BY_MODEL[self.model].supports_settings
+    async def _async_update_data(self) -> ChargerState:
+        async with self._lock:
+            try:
+                client = await self._async_connected_client()
+                state = await client.async_update()
+                if self.auto_fetch_curves:
+                    await self._async_refresh_curves(client, state)
+            except ConfigEntryAuthFailed:
+                await self._async_drop_client()
+                raise
+            except (*BLE_ERRORS, UpdateFailed) as err:
+                await self._async_drop_client()
+                return self._tolerate(err)
 
-    async def async_set_charger_settings(self, **changes) -> None:
-        """Write some of the charger's own settings, then tell the entities."""
-        charger = await self.async_connected_charger()
-        try:
-            await charger.async_set_settings(**changes)
-        except ValueError as err:
-            raise HomeAssistantError(str(err)) from err
+        self._failures = 0
+        self.update_interval = POLL_INTERVAL
+        return state
+
+    def _tolerate(self, err: Exception) -> ChargerState:
+        """Keep the last values through a short outage, then give up."""
+        self._failures += 1
+        if self._failures <= TOLERATED_FAILURES and self.data is not None:
+            _LOGGER.debug("Poll of %s failed (%d): %r", self.address, self._failures, err)
+            return self.data
+
+        excess = min(self._failures - TOLERATED_FAILURES, 16)
+        self.update_interval = min(POLL_INTERVAL * 2**excess, MAX_BACKOFF)
+        if isinstance(err, UpdateFailed):
+            raise err
+        raise UpdateFailed(f"Cannot talk to {self.address}: {err!r}") from err
+
+    # ------------------------------------------------------------------
+    # Commands
+    # ------------------------------------------------------------------
+
+    async def _async_command[T](self, command: Callable[[ChargerClient], Awaitable[T]]) -> T:
+        """Run one command on the shared link."""
+        async with self._lock:
+            try:
+                client = await self._async_connected_client()
+                result = await command(client)
+            except ConfigEntryAuthFailed as err:
+                await self._async_drop_client()
+                raise HomeAssistantError(
+                    "The charger refused the passcode; change it in the integration's options"
+                ) from err
+            except UpdateFailed as err:
+                raise HomeAssistantError(str(err)) from err
+            except ValueError as err:
+                raise HomeAssistantError(str(err)) from err
+            except BLE_ERRORS as err:
+                await self._async_drop_client()
+                raise HomeAssistantError(f"Cannot talk to {self.address}: {err!r}") from err
+
+        self._arm_idle_disconnect()
+        return result
+
+    def running_slots(self, slots: Any) -> list[int]:
+        """Which of these slots (numbered from 1) have a program running.
+
+        The charger acknowledges a new program for a running slot but keeps
+        the old one going, so a start has to be refused up front.
+        """
+        channels = self.data.channels if self.data else []
+        return [
+            slot
+            for slot in slots
+            if 0 < slot <= len(channels) and channels[slot - 1].status in RUNNING_STATUSES
+        ]
+
+    def _refuse_running(self, slots: Any) -> None:
+        running = self.running_slots(slots)
+        if running:
+            names = ", ".join(str(slot) for slot in running)
+            raise HomeAssistantError(
+                f"Slot {names} already runs a program; stop it first, the charger would "
+                "ignore a new program"
+            )
+
+    def _program_for(self, slot: int, overrides: dict[str, Any]) -> dict[str, Any]:
+        program = {key: value for key, value in overrides.items() if value is not None}
+        if "chemistry" not in program:
+            expected = self.expected_chemistry.get(slot - 1, "any")
+            if expected != "any":
+                program["chemistry"] = expected
+        return program
+
+    async def async_start_slot(self, slot: int, **overrides: Any) -> None:
+        await self.async_request_refresh()
+        self._refuse_running([slot])
+        program = self._program_for(slot, overrides)
+        _LOGGER.info("Starting slot %s of %s with %s", slot, self.address, program)
+        await self._async_command(lambda client: client.start_channel(slot - 1, **program))
+        await self.async_request_refresh()
+
+    async def async_start_all(self, **overrides: Any) -> None:
+        await self.async_request_refresh()
+        self._refuse_running(range(1, self.channel_count + 1))
+        per_channel = {
+            slot - 1: self._program_for(slot, overrides)
+            for slot in range(1, self.channel_count + 1)
+        }
+        _LOGGER.info("Starting every slot of %s with %s", self.address, per_channel)
+        await self._async_command(lambda client: client.start_all(per_channel=per_channel))
+        await self.async_request_refresh()
+
+    async def async_stop_slot(self, slot: int) -> None:
+        await self._async_command(lambda client: client.stop_channel(slot - 1))
+        await self.async_request_refresh()
+
+    async def async_stop_all(self) -> None:
+        await self._async_command(lambda client: client.stop_all())
+        await self.async_request_refresh()
+
+    async def async_set_settings(self, **changes: Any) -> None:
+        await self._async_command(lambda client: client.async_set_settings(**changes))
         self.async_update_listeners()
 
-    async def async_set_passcode(self, passcode: str) -> None:
-        """Adopt a new passcode and reconnect so the charger sees it."""
-        if passcode == self.passcode:
-            return
-        self.passcode = passcode
-        await self._async_drop_charger()
-        if not self.polling_disabled:
-            await self.async_request_refresh()
+    # ------------------------------------------------------------------
+    # Voltage curves
+    # ------------------------------------------------------------------
 
-    def _build_data(self, state):
-        return {"state": state, "device": state.device, "channels": state.channels}
+    async def async_fetch_curve(self, slot: int) -> CurveData:
+        curve = await self._async_command(lambda client: client.async_get_voltage_curve(slot - 1))
+        return self._store_curve(slot - 1, curve)
 
-    async def _async_drop_charger(self) -> None:
-        """Close the link before forgetting the client.
+    def _store_curve(self, index: int, curve: Any) -> CurveData:
+        data = CurveData(
+            samples_mv=list(curve.samples_mv),
+            interval_seconds=curve.interval_seconds,
+            checksum_ok=curve.checksum_ok,
+            fetched_at=datetime.now().astimezone(),
+        )
+        self.curves[index] = data
+        self.async_update_listeners()
+        return data
 
-        The chargers accept a single BLE client at a time, so abandoning a
-        half-open connection makes the next poll fail too.
-        """
-        charger, self.charger = self.charger, None
-        if charger is None:
-            return
-
-        try:
-            await charger.disconnect()
-        except Exception as err:
-            _LOGGER.debug("SkyRC %s: disconnect after failure failed: %r", self.model, err)
-
-    def _note_success(self) -> None:
-        if self._consecutive_failures:
-            _LOGGER.info(
-                "SkyRC %s: back online after %s failed poll(s)",
-                self.model,
-                self._consecutive_failures,
-            )
-        self._consecutive_failures = 0
-        self._last_failure_repr = None
-        self.update_interval = UPDATE_INTERVAL
-
-    def _backoff_interval(self) -> timedelta:
-        excess = self._consecutive_failures - STALE_AFTER_FAILURES
-        if excess < 0:
-            return UPDATE_INTERVAL
-        # Cap the exponent before it overflows; the ceiling applies anyway.
-        return min(UPDATE_INTERVAL * 2 ** min(excess + 1, 16), MAX_BACKOFF_INTERVAL)
-
-    def _note_failure(self, err: Exception) -> None:
-        """Log a poll failure once per outage rather than once per poll."""
-        self._consecutive_failures += 1
-        failure_repr = repr(err)
-
-        interval = self._backoff_interval()
-        self.update_interval = interval
-
+    async def _async_refresh_curves(self, client: ChargerClient, state: ChargerState) -> None:
+        """Read the curve of every working slot, at most every 30 seconds."""
         now = time.monotonic()
-        first = self._consecutive_failures == 1
-        reminder = now - self._last_failure_warning_monotonic >= FAILURE_REMINDER_SECONDS
+        if now - self._last_curve_fetch < CURVE_REFRESH_SECONDS:
+            return
+        working = [
+            channel.index for channel in state.channels if channel.status in RUNNING_STATUSES
+        ]
+        if not working:
+            return
+        self._last_curve_fetch = now
+        for index in working:
+            try:
+                self._store_curve(index, await client.async_get_voltage_curve(index))
+            except BLE_ERRORS as err:
+                _LOGGER.debug("Reading the curve of slot %s failed: %r", index + 1, err)
 
-        if first or reminder:
-            self._last_failure_warning_monotonic = now
-            _LOGGER.warning(
-                "SkyRC %s: poll failed %s time(s) in a row; retrying every %ss and serving "
-                "the last known values meanwhile: %s",
-                self.model,
-                self._consecutive_failures,
-                int(interval.total_seconds()),
-                failure_repr,
-            )
-        else:
-            _LOGGER.debug(
-                "SkyRC %s: still unreachable after %s polls: %s",
-                self.model,
-                self._consecutive_failures,
-                failure_repr,
-            )
+    # ------------------------------------------------------------------
+    # Leaving the charger to the SkyRC app
+    # ------------------------------------------------------------------
 
-        self._last_failure_repr = failure_repr
+    @callback
+    def _cancel_idle(self) -> None:
+        if self._unsub_idle is not None:
+            self._unsub_idle()
+            self._unsub_idle = None
 
-    async def _async_update_data(self):
-        try:
-            charger = await self._ensure_charger()
+    @callback
+    def _arm_idle_disconnect(self) -> None:
+        """With polling off, do not hold the charger after a command."""
+        self._cancel_idle()
+        if not self.config_entry.pref_disable_polling:
+            return
 
-            if not charger.is_connected:
-                await charger.connect()
-                if not charger.is_connected:
-                    raise ConnectionError(f"SkyRC {self.model} BLE connection was not established")
+        async def disconnect(_now: datetime) -> None:
+            self._unsub_idle = None
+            await self.async_disconnect()
 
-            state = await charger.async_update()
-            data = self._build_data(state)
-
-            self._track_current_transitions(data)
-            self._last_good_data = data
-            self._note_success()
-
-            await self.async_auto_fetch_voltage_curves()
-
-            return data
-
-        except Exception as err:
-            await self._async_drop_charger()
-            self._note_failure(err)
-
-            if self._last_good_data is not None:
-                return self._last_good_data
-
-            raise UpdateFailed(f"Error communicating with SkyRC {self.model}: {err!r}") from err
+        self._unsub_idle = async_call_later(self.hass, IDLE_DISCONNECT, disconnect)

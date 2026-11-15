@@ -24,7 +24,6 @@ class ChannelData:
     temperature: float | None = None  # celsius
     resistance: float | None = None  # milliohms
     time: int | None = None  # seconds elapsed
-    led: str | None = None
     error: str | None = None  # MC5000 fault reported for the slot, if any
 
 
@@ -38,7 +37,6 @@ class DeviceData:
     model: str = ""
     hw_version: str | None = None
     sw_version: str | None = None
-    input_voltage: float | None = None
     # MC5000-only settings.
     beep_volume: str | None = None  # off / low / medium / high
     notification_volume: str | None = None

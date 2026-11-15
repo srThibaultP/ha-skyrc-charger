@@ -44,3 +44,7 @@ explicit_package_bases = true
 # `class ConfigFlow(..., domain=DOMAIN)` looks like a bad keyword to mypy
 module = ["custom_components.skyrc_charger.config_flow"]
 disable_error_code = ["call-arg"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests_ha"]

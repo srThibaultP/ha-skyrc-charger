@@ -1,39 +1,33 @@
 {
   "config": {
+    "flow_title": "{name}",
     "step": {
       "user": {
         "title": "SkyRC Charger",
-        "description": "Select your charger model.",
+        "description": "Pick a charger in range, or type its Bluetooth address. The charger must be reachable by a Bluetooth adapter or an active Bluetooth proxy.",
         "data": {
-          "model": "Model"
+          "address": "Bluetooth address",
+          "name": "Name",
+          "passcode": "Passcode"
+        },
+        "data_description": {
+          "address": "The charger shows up as #Charger followed by four characters.",
+          "passcode": "The four digits the charger shows on its screen. 1234 from the factory."
         }
       },
-      "device": {
-        "title": "SkyRC Charger - BLE device",
-        "description": "Select the discovered device or enter its BLE address manually.",
+      "confirm": {
+        "title": "Set up {name}",
+        "description": "Home Assistant found a SkyRC charger. Enter its passcode to connect.",
         "data": {
-          "address": "BLE address",
-          "name": "Name",
-          "passcode": "Passcode (MC5000)"
+          "passcode": "Passcode"
         },
         "data_description": {
           "passcode": "The four digits the charger shows on its screen. 1234 from the factory."
         }
-      }
-    },
-    "error": {
-      "no_devices_found": "No matching BLE devices found. Enter the address manually.",
-      "invalid_passcode": "The passcode is four digits."
-    },
-    "abort": {
-      "already_configured": "This device is already configured."
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "SkyRC MC5000",
-        "description": "The app sends the charger its passcode before anything else, and so does this integration.",
+      },
+      "reauth_confirm": {
+        "title": "Passcode refused",
+        "description": "{name} refused the passcode. Enter the one shown on the charger's screen.",
         "data": {
           "passcode": "Passcode"
         },
@@ -43,7 +37,247 @@
       }
     },
     "error": {
-      "invalid_passcode": "The passcode is four digits."
+      "cannot_connect": "Cannot connect to the charger. It must be on and reachable by a Bluetooth adapter or an active Bluetooth proxy.",
+      "invalid_auth": "The charger refused the passcode.",
+      "invalid_passcode_format": "The passcode is four digits."
+    },
+    "abort": {
+      "already_configured": "This charger is already configured.",
+      "reauth_successful": "The new passcode works."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SkyRC charger",
+        "description": "The charger only obeys a client that sent its passcode first.",
+        "data": {
+          "passcode": "Passcode"
+        },
+        "data_description": {
+          "passcode": "The four digits the charger shows on its screen. 1234 from the factory."
+        }
+      }
+    },
+    "error": {
+      "invalid_passcode_format": "The passcode is four digits."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Slot {slot} Status"
+      },
+      "battery_type": {
+        "name": "Slot {slot} Battery Type"
+      },
+      "mode": {
+        "name": "Slot {slot} Mode"
+      },
+      "voltage": {
+        "name": "Slot {slot} Voltage"
+      },
+      "current": {
+        "name": "Slot {slot} Current"
+      },
+      "capacity": {
+        "name": "Slot {slot} Capacity"
+      },
+      "temperature": {
+        "name": "Slot {slot} Temperature"
+      },
+      "resistance": {
+        "name": "Slot {slot} Internal Resistance"
+      },
+      "time": {
+        "name": "Slot {slot} Elapsed Time"
+      },
+      "error": {
+        "name": "Slot {slot} Error"
+      },
+      "voltage_curve_points": {
+        "name": "Slot {slot} Voltage Curve Points"
+      }
+    },
+    "button": {
+      "refresh": {
+        "name": "Refresh"
+      },
+      "start_all": {
+        "name": "Start All"
+      },
+      "stop_all": {
+        "name": "Stop All"
+      },
+      "slot_start": {
+        "name": "Slot {slot} Start"
+      },
+      "slot_stop": {
+        "name": "Slot {slot} Stop"
+      },
+      "fetch_voltage_curve": {
+        "name": "Slot {slot} Fetch Voltage Curve"
+      }
+    },
+    "select": {
+      "expected_chemistry": {
+        "name": "Slot {slot} Expected Chemistry"
+      },
+      "beep_volume": {
+        "name": "Beep Volume"
+      },
+      "notification_volume": {
+        "name": "Notification Volume"
+      },
+      "end_notification": {
+        "name": "End Notification"
+      },
+      "backlight": {
+        "name": "Backlight"
+      },
+      "sleep_timer": {
+        "name": "Sleep Timer"
+      }
+    },
+    "switch": {
+      "warning_tone": {
+        "name": "Warning Tone"
+      },
+      "auto_fetch_voltage_curves": {
+        "name": "Auto Fetch Voltage Curves"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Read the charger now.",
+      "fields": {
+        "entry_id": {
+          "name": "Charger",
+          "description": "Which SkyRC charger to use. Optional while a single charger is set up."
+        }
+      }
+    },
+    "start_slot": {
+      "name": "Start slot",
+      "description": "Write a program to a slot, which starts it. A slot that already runs a program is refused: stop it first.",
+      "fields": {
+        "entry_id": {
+          "name": "Charger",
+          "description": "Which SkyRC charger to use. Optional while a single charger is set up."
+        },
+        "slot": {
+          "name": "Slot",
+          "description": "Slot number, 1 to 4."
+        },
+        "chemistry": {
+          "name": "Chemistry",
+          "description": "What is in the slot. Defaults to the slot's Expected Chemistry select when that is not \"any\"."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Lithium cells take charge, storage, discharge or cycle; nickel cells charge, refresh, break_in, discharge or cycle; NiZn and RAM cells charge, discharge or cycle."
+        },
+        "current_ma": {
+          "name": "Current",
+          "description": "Charge current. Defaults to what the SkyRC app proposes for the chemistry."
+        },
+        "capacity_mah": {
+          "name": "Capacity",
+          "description": "Cell capacity. Defaults to what the SkyRC app proposes for the chemistry."
+        }
+      }
+    },
+    "stop_slot": {
+      "name": "Stop slot",
+      "description": "Stop one slot.",
+      "fields": {
+        "entry_id": {
+          "name": "Charger",
+          "description": "Which SkyRC charger to use. Optional while a single charger is set up."
+        },
+        "slot": {
+          "name": "Slot",
+          "description": "Slot number, 1 to 4."
+        }
+      }
+    },
+    "start_all": {
+      "name": "Start all slots",
+      "description": "Start every slot, each with the chemistry declared in its Expected Chemistry select.",
+      "fields": {
+        "entry_id": {
+          "name": "Charger",
+          "description": "Which SkyRC charger to use. Optional while a single charger is set up."
+        },
+        "chemistry": {
+          "name": "Chemistry",
+          "description": "What is in the slot. Defaults to the slot's Expected Chemistry select when that is not \"any\"."
+        },
+        "mode": {
+          "name": "Mode",
+          "description": "Lithium cells take charge, storage, discharge or cycle; nickel cells charge, refresh, break_in, discharge or cycle; NiZn and RAM cells charge, discharge or cycle."
+        },
+        "current_ma": {
+          "name": "Current",
+          "description": "Charge current. Defaults to what the SkyRC app proposes for the chemistry."
+        },
+        "capacity_mah": {
+          "name": "Capacity",
+          "description": "Cell capacity. Defaults to what the SkyRC app proposes for the chemistry."
+        }
+      }
+    },
+    "stop_all": {
+      "name": "Stop all slots",
+      "description": "Stop every slot.",
+      "fields": {
+        "entry_id": {
+          "name": "Charger",
+          "description": "Which SkyRC charger to use. Optional while a single charger is set up."
+        }
+      }
+    },
+    "fetch_voltage_curve": {
+      "name": "Fetch voltage curve",
+      "description": "Read the voltage curve the charger logged for a slot. It lands on the slot's Voltage Curve Points sensor as attributes.",
+      "fields": {
+        "entry_id": {
+          "name": "Charger",
+          "description": "Which SkyRC charger to use. Optional while a single charger is set up."
+        },
+        "slot": {
+          "name": "Slot",
+          "description": "Slot number, 1 to 4."
+        }
+      }
+    }
+  },
+  "selector": {
+    "chemistry": {
+      "options": {
+        "liion": "Li-ion",
+        "liion_hv": "Li-ion HV",
+        "lifepo4": "LiFePO4",
+        "nimh": "NiMH",
+        "nicd": "NiCd",
+        "eneloop": "Eneloop",
+        "nizn": "NiZn",
+        "ram": "RAM",
+        "lto": "LTO",
+        "naion": "Na-ion"
+      }
+    },
+    "mode": {
+      "options": {
+        "charge": "Charge",
+        "storage": "Storage",
+        "discharge": "Discharge",
+        "cycle": "Cycle",
+        "refresh": "Refresh",
+        "break_in": "Break-in"
+      }
     }
   }
 }

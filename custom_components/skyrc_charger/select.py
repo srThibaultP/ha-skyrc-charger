@@ -1,138 +1,152 @@
+"""Selects of a SkyRC charger: what is in each slot, and the charger's settings."""
+
 from __future__ import annotations
 
-from homeassistant.components.select import SelectEntity
-from homeassistant.helpers.entity import EntityCategory
+from collections.abc import Callable
+from dataclasses import dataclass
+
+from homeassistant.components.select import SelectEntity, SelectEntityDescription
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import CHEMISTRY_OPTIONS_BY_MODEL, DOMAIN
-from .entity import SkyrcEntity, build_device_info
+from .const import MC5000_CHEMISTRY_OPTIONS
+from .coordinator import SkyrcConfigEntry, SkyrcCoordinator
+from .entity import SkyrcAlwaysAvailableEntity, SkyrcEntity
 from .mc5000_client import SETTING_OPTIONS, SLEEP_TIMER_MINUTES
+from .models import DeviceData
 
-SLEEP_TIMER_OPTIONS = ["off"] + [f"{minutes} min" for minutes in SLEEP_TIMER_MINUTES[1:]]
+PARALLEL_UPDATES = 1
 
-# key (also the DeviceData attribute), name, options, icon
+SLEEP_TIMER_OPTIONS = ["off", *(f"{minutes} min" for minutes in SLEEP_TIMER_MINUTES[1:])]
+
+
+def _sleep_option(device: DeviceData) -> str | None:
+    minutes = device.sleep_timer_minutes
+    if minutes is None:
+        return None
+    return "off" if minutes == 0 else f"{minutes} min"
+
+
+@dataclass(frozen=True, kw_only=True)
+class SettingSelectDescription(SelectEntityDescription):
+    """One of the charger's own settings."""
+
+    value_fn: Callable[[DeviceData], str | None]
+    #: The keyword of async_set_settings, and how an option maps to its value.
+    setting: str
+    to_setting: Callable[[str], object] = str
+
+
 SETTING_SELECTS = (
-    ("beep_volume", "Beep Volume", list(SETTING_OPTIONS["beep_volume"]), "mdi:volume-high"),
-    (
-        "notification_volume",
-        "Notification Volume",
-        list(SETTING_OPTIONS["notification_volume"]),
-        "mdi:bell-ring-outline",
+    SettingSelectDescription(
+        key="beep_volume",
+        translation_key="beep_volume",
+        icon="mdi:volume-high",
+        options=list(SETTING_OPTIONS["beep_volume"]),
+        value_fn=lambda device: device.beep_volume,
+        setting="beep_volume",
     ),
-    (
-        "end_notification",
-        "End Notification",
-        list(SETTING_OPTIONS["end_notification"]),
-        "mdi:bell-check-outline",
+    SettingSelectDescription(
+        key="notification_volume",
+        translation_key="notification_volume",
+        icon="mdi:bell-ring-outline",
+        options=list(SETTING_OPTIONS["notification_volume"]),
+        value_fn=lambda device: device.notification_volume,
+        setting="notification_volume",
     ),
-    ("backlight", "Backlight", list(SETTING_OPTIONS["backlight"]), "mdi:brightness-6"),
+    SettingSelectDescription(
+        key="end_notification",
+        translation_key="end_notification",
+        icon="mdi:bell-check-outline",
+        options=list(SETTING_OPTIONS["end_notification"]),
+        value_fn=lambda device: device.end_notification,
+        setting="end_notification",
+    ),
+    SettingSelectDescription(
+        key="backlight",
+        translation_key="backlight",
+        icon="mdi:brightness-6",
+        options=list(SETTING_OPTIONS["backlight"]),
+        value_fn=lambda device: device.backlight,
+        setting="backlight",
+    ),
+    SettingSelectDescription(
+        key="sleep_timer",
+        translation_key="sleep_timer",
+        icon="mdi:sleep",
+        options=SLEEP_TIMER_OPTIONS,
+        value_fn=_sleep_option,
+        setting="sleep_timer_minutes",
+        to_setting=lambda option: 0 if option == "off" else int(option.split()[0]),
+    ),
 )
 
 
-async def async_setup_entry(hass, entry, async_add_entities):
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-
-    entities: list = [
-        SkyrcChemistrySelect(coordinator, entry.entry_id, slot_index)
-        for slot_index in range(coordinator.channel_count)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: SkyrcConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data
+    entities: list[SelectEntity] = [
+        ExpectedChemistrySelect(coordinator, index) for index in range(coordinator.channel_count)
     ]
     if coordinator.supports_settings:
-        entities.extend(
-            SkyrcSettingSelect(coordinator, entry.entry_id, key, name, options, icon)
-            for key, name, options, icon in SETTING_SELECTS
-        )
-        entities.append(SkyrcSleepTimerSelect(coordinator, entry.entry_id))
-
+        entities.extend(SettingSelect(coordinator, description) for description in SETTING_SELECTS)
     async_add_entities(entities)
 
 
-class SkyrcChemistrySelect(SelectEntity, RestoreEntity):
-    """Expected battery chemistry for a slot.
+class ExpectedChemistrySelect(SkyrcAlwaysAvailableEntity, SelectEntity, RestoreEntity):
+    """What the user says is in a slot.
 
-    The chemistry written into the program when a slot is started: the
-    MC5000 only reports a slot's chemistry while a program runs, so what is
-    in the slot has to be declared.
+    The MC5000 only reports a slot's chemistry while a program runs, so this
+    is the chemistry written into the program when the slot is started.
     """
 
-    _attr_has_entity_name = True
+    _attr_translation_key = "expected_chemistry"
     _attr_icon = "mdi:flask-outline"
-    _attr_should_poll = False
+    _attr_options = MC5000_CHEMISTRY_OPTIONS
 
-    def __init__(self, coordinator, entry_id: str, slot_index: int) -> None:
-        self.coordinator = coordinator
-        self.entry_id = entry_id
-        self.slot_index = slot_index
-        self.slot = slot_index + 1
-
-        self._attr_options = CHEMISTRY_OPTIONS_BY_MODEL[coordinator.model]
-        self._attr_name = f"Slot {self.slot} Expected Chemistry"
-        self._attr_unique_id = f"{entry_id}_slot_{self.slot}_expected_chemistry"
+    def __init__(self, coordinator: SkyrcCoordinator, index: int) -> None:
+        super().__init__(coordinator, f"slot_{index + 1}_expected_chemistry")
+        self._index = index
+        self._attr_translation_placeholders = {"slot": str(index + 1)}
         self._attr_current_option = "any"
+        coordinator.expected_chemistry[index] = "any"
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        last_state = await self.async_get_last_state()
-        if last_state and last_state.state in self._attr_options:
-            self._attr_current_option = last_state.state
+        last = await self.async_get_last_state()
+        if last is not None and last.state in self.options:
+            await self.async_select_option(last.state)
 
     async def async_select_option(self, option: str) -> None:
-        if option not in self._attr_options:
-            return
         self._attr_current_option = option
+        self.coordinator.expected_chemistry[self._index] = option
         self.async_write_ha_state()
 
-    @property
-    def current_option(self) -> str:
-        return self._attr_current_option
 
-    @property
-    def device_info(self):
-        return build_device_info(self.coordinator, self.entry_id)
+class SettingSelect(SkyrcEntity, SelectEntity):
+    """A setting of the charger itself, written to it when changed."""
 
-
-class SkyrcSettingSelect(SkyrcEntity, SelectEntity):
-    """One of the charger's own settings, written to the charger when changed."""
-
+    entity_description: SettingSelectDescription
     _attr_entity_category = EntityCategory.CONFIG
 
-    def __init__(self, coordinator, entry_id: str, key: str, name: str, options, icon) -> None:
-        super().__init__(coordinator, entry_id)
-        self._key = key
-        self._attr_name = name
-        self._attr_icon = icon
-        self._attr_options = list(options)
-        self._attr_unique_id = f"{entry_id}_{key}"
-
-    def _device(self):
-        return (self.coordinator.data or {}).get("device")
+    def __init__(
+        self, coordinator: SkyrcCoordinator, description: SettingSelectDescription
+    ) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
 
     @property
     def current_option(self) -> str | None:
-        device = self._device()
-        value = getattr(device, self._key, None) if device else None
-        return value if value in self._attr_options else None
+        data = self.coordinator.data
+        return self.entity_description.value_fn(data.device) if data else None
 
     async def async_select_option(self, option: str) -> None:
-        await self.coordinator.async_set_charger_settings(**{self._key: option})
-
-
-class SkyrcSleepTimerSelect(SkyrcSettingSelect):
-    """The idle time after which the charger switches its screen off."""
-
-    def __init__(self, coordinator, entry_id: str) -> None:
-        super().__init__(
-            coordinator, entry_id, "sleep_timer", "Sleep Timer", SLEEP_TIMER_OPTIONS, "mdi:sleep"
+        description = self.entity_description
+        await self.coordinator.async_set_settings(
+            **{description.setting: description.to_setting(option)}
         )
-
-    @property
-    def current_option(self) -> str | None:
-        device = self._device()
-        minutes = getattr(device, "sleep_timer_minutes", None) if device else None
-        if minutes is None:
-            return None
-        option = "off" if minutes == 0 else f"{minutes} min"
-        return option if option in self._attr_options else None
-
-    async def async_select_option(self, option: str) -> None:
-        minutes = 0 if option == "off" else int(option.split()[0])
-        await self.coordinator.async_set_charger_settings(sleep_timer_minutes=minutes)
