@@ -73,6 +73,9 @@ class ChargerClient:
 
     channel_count: int = 0
 
+    #: Whether the charger accepted the passcode: None until it answered.
+    unlocked: bool | None = None
+
     #: Whether the charger can replay a logged voltage curve for a slot.
     supports_voltage_curves: bool = False
     #: Whether the charger's own settings (beeps, backlight, ...) can be written.

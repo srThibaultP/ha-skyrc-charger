@@ -908,5 +908,102 @@ class Nc2200Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client._client.writes, [])
 
 
+legacy = load("legacy_client")
+LegacyClient = legacy.LegacyClient
+const = load("const")
+
+
+def _legacy_status(state: int, **fields) -> bytes:
+    packet = bytearray(36)
+    packet[0:3] = b"\x0f\x22\x55"
+    packet[3] = fields.get("mask", 1)
+    packet[4] = state
+    packet[5:7] = fields.get("capacity", 0).to_bytes(2, "big")
+    packet[7:9] = fields.get("elapsed", 0).to_bytes(2, "big")
+    packet[9:11] = fields.get("voltage", 0).to_bytes(2, "big")
+    packet[11:13] = fields.get("current", 0).to_bytes(2, "big")
+    packet[13] = fields.get("ext_temp", 0)
+    packet[14] = fields.get("int_temp", 0)
+    packet[15:17] = fields.get("resistance", 0).to_bytes(2, "big")
+    packet[35] = sum(packet[2:35]) & 0xFF
+    return bytes(packet)
+
+
+class LegacyTest(unittest.IsolatedAsyncioTestCase):
+    def test_the_model_table_comes_with_its_channels(self) -> None:
+        models = {model.key: model for model in const.LEGACY_MODELS}
+
+        self.assertEqual(models["q200"].channels, 4)
+        self.assertEqual(models["d100"].channels, 2)
+        self.assertEqual(models["b6evo"].channels, 1)
+        self.assertFalse(models["b6evo"].password)
+        self.assertEqual(len({model.code for model in models.values()}), len(models))
+
+    def test_each_model_has_its_own_driver(self) -> None:
+        q200 = legacy.make_legacy_client("q200")
+        b6 = legacy.make_legacy_client("b6nano")
+
+        self.assertEqual(
+            (q200.MODEL_NAME, q200.channel_count, q200.MODEL_CODE), ("Q200", 4, b"100104")
+        )
+        self.assertEqual((b6.MODEL_NAME, b6.channel_count), ("B6nano", 1))
+
+    def test_a_working_channel(self) -> None:
+        channel = LegacyClient._parse_channel(
+            1,
+            _legacy_status(
+                1, capacity=250, elapsed=600, voltage=4150, current=1500, int_temp=31, resistance=40
+            ),
+        )
+
+        self.assertEqual((channel.status, channel.voltage, channel.current), ("active", 4.15, 1.5))
+        self.assertEqual((channel.capacity, channel.time, channel.resistance), (250, 600, 40))
+        self.assertEqual(channel.temperature, 31.0)
+
+    def test_no_reading_is_zero(self) -> None:
+        channel = LegacyClient._parse_channel(0, _legacy_status(3, voltage=0xFFFF, current=0xFFFF))
+
+        self.assertEqual((channel.voltage, channel.current), (0.0, 0.0))
+
+    def test_idle_error_and_unknown_states(self) -> None:
+        for state in (0, 2, 6):
+            self.assertEqual(LegacyClient._parse_channel(0, _legacy_status(state)).status, "idle")
+        failed = LegacyClient._parse_channel(0, bytes([0x0F, 0x08, 0x55, 1, 4, 9, 3, 0, 0]))
+        self.assertEqual((failed.status, failed.error), ("error", "system_9_charge_3"))
+        self.assertEqual(LegacyClient._parse_channel(0, _legacy_status(8)).status, "unknown_8")
+
+    def test_the_password_is_four_digits(self) -> None:
+        legacy._password_bytes("5793")
+        for bad in ("123", "12345", "12a4", ""):
+            with self.assertRaises(ValueError):
+                legacy._password_bytes(bad)
+
+    async def test_each_channel_is_asked_with_the_password_and_a_start_is_refused(self) -> None:
+        client = legacy.make_legacy_client("d100")(FakeDevice())
+        await _connect(client)
+        client._client.writes.clear()
+        reply = bytearray(15)
+        reply[0:3] = b"\x0f\x0d\x5f"
+        reply[12] = 1
+
+        async def feed():
+            for _ in range(4000):
+                await asyncio.sleep(0)
+                if client._client.writes and client._notify_queue.empty():
+                    client._notify_queue.put_nowait(bytes(reply))
+
+        task = asyncio.create_task(feed())
+        try:
+            await client._async_handshake()
+        finally:
+            task.cancel()
+
+        asked = [bytes(write[2:8]) for write in client._client.writes if write[2] == 0x5F]
+        self.assertEqual(asked[:2], [bytes([0x5F, 1, 5, 7, 9, 3]), bytes([0x5F, 2, 5, 7, 9, 3])])
+        self.assertTrue(client.unlocked)
+        with self.assertRaises(ValueError):
+            await client.start_channel(0)
+
+
 if __name__ == "__main__":
     unittest.main()
