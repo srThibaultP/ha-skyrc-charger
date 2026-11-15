@@ -13,21 +13,35 @@ DEFAULT_PASSCODE = "1234"
 DEFAULT_NAME = "SkyRC Charger"
 
 MODEL_MC5000 = "mc5000"
+MODEL_NC3000 = "nc3000"
 
 # Labels for the model picker in the config flow.
 MODELS = {
     MODEL_MC5000: "SkyRC MC5000 (4 slots)",
+    MODEL_NC3000: "SkyRC NC3000 (4 slots)",
+}
+
+# What the charger answers to the info request, as the app tells them apart.
+MODEL_BY_CODE = {
+    "100214": MODEL_MC5000,
+    "100209": MODEL_NC3000,
 }
 
 # Default title of a config entry, which is also the device name entity ids
 # are built from - so keep it short and free of parentheses.
 MODEL_NAMES = {
     MODEL_MC5000: "SkyRC MC5000",
+    MODEL_NC3000: "SkyRC NC3000",
 }
 
 CHANNELS_BY_MODEL = {
     MODEL_MC5000: 4,
+    MODEL_NC3000: 4,
 }
+
+# Models whose slots can be started from Home Assistant, and which report
+# error codes and a chemistry. The others are monitored and stopped only.
+MODELS_WITH_START = {MODEL_MC5000}
 
 MAX_CHANNELS = max(CHANNELS_BY_MODEL.values())
 

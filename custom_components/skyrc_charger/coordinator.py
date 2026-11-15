@@ -26,10 +26,13 @@ from .const import (
     DEFAULT_PASSCODE,
     DOMAIN,
     MODEL_MC5000,
+    MODEL_NC3000,
+    MODELS_WITH_START,
     OPTION_PASSCODE,
 )
 from .mc5000_client import Mc5000Client
 from .models import ChargerClient, ChargerState
+from .nc3000_client import Nc3000Client
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,10 +40,11 @@ type SkyrcConfigEntry = ConfigEntry[SkyrcCoordinator]
 
 CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
     MODEL_MC5000: Mc5000Client,
+    MODEL_NC3000: Nc3000Client,
 }
 
 # The models whose own settings (beeps, backlight, ...) can be written.
-MODELS_WITH_SETTINGS = {MODEL_MC5000}
+MODELS_WITH_SETTINGS = {MODEL_MC5000, MODEL_NC3000}
 
 POLL_INTERVAL = timedelta(seconds=10)
 MAX_BACKOFF = timedelta(minutes=5)
@@ -104,6 +108,10 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
     @property
     def passcode(self) -> str:
         return str(self.config_entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE))
+
+    @property
+    def supports_start(self) -> bool:
+        return self.model in MODELS_WITH_START
 
     @property
     def supports_settings(self) -> bool:
@@ -233,6 +241,12 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
             if 0 < slot <= len(channels) and channels[slot - 1].status in RUNNING_STATUSES
         ]
 
+    def _require_start(self) -> None:
+        if not self.supports_start:
+            raise HomeAssistantError(
+                f"Starting a slot is not supported yet on the {self.model.upper()}"
+            )
+
     def _refuse_running(self, slots: Any) -> None:
         running = self.running_slots(slots)
         if running:
@@ -251,6 +265,7 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
         return program
 
     async def async_start_slot(self, slot: int, **overrides: Any) -> None:
+        self._require_start()
         # A read of its own: a debounced refresh would judge by the state from
         # before the stop that usually comes just ahead of a start.
         await self.async_refresh()
@@ -261,6 +276,7 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
         await self.async_refresh()
 
     async def async_start_all(self, **overrides: Any) -> None:
+        self._require_start()
         await self.async_refresh()
         self._refuse_running(range(1, self.channel_count + 1))
         per_channel = {

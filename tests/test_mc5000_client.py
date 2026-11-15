@@ -608,5 +608,77 @@ class SettingsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.fake.writes, [])
 
 
+nc3000 = load("nc3000_client")
+Nc3000Client = nc3000.Nc3000Client
+
+
+def _nc_packet(**fields) -> bytes:
+    packet = bytearray(23)
+    packet[0:3] = b"\x0f\x15\x91"
+    packet[3] = fields.get("slot", 0x01)
+    packet[4:6] = fields.get("current", 0).to_bytes(2, "big")
+    packet[6:8] = fields.get("voltage", 0).to_bytes(2, "big")
+    packet[8:10] = fields.get("temperature", 0).to_bytes(2, "big")
+    packet[10:12] = fields.get("capacity", 0).to_bytes(2, "big")
+    packet[12:16] = fields.get("elapsed", 0).to_bytes(4, "big")
+    packet[16:18] = fields.get("resistance", 0).to_bytes(2, "big")
+    packet[18] = fields.get("status", 0)
+    packet[19] = fields.get("mode", 0)
+    packet[20] = fields.get("error", 0)
+    packet[22] = sum(packet[2:22]) & 0xFF
+    return bytes(packet)
+
+
+class Nc3000Test(unittest.IsolatedAsyncioTestCase):
+    def test_it_knows_itself_by_its_model_code(self) -> None:
+        resp = bytes.fromhex("0f1357003130303230390400000000015301007f57")
+
+        info = Nc3000Client._parse_device_info(resp, "AA:BB:CC:DD:EE:FF")
+
+        self.assertIsNotNone(info)
+        self.assertEqual(info.model, "NC3000")
+        self.assertEqual(info.model_code, "100209")
+
+    def test_a_charging_slot(self) -> None:
+        channel = Nc3000Client._parse_channel(
+            0, _nc_packet(current=1000, voltage=1380, capacity=300, elapsed=1200, status=7, mode=1)
+        )
+
+        self.assertEqual(channel.status, "charging")
+        self.assertEqual(channel.mode, "charge")
+        self.assertEqual(channel.current, 1.0)
+        self.assertEqual(channel.time, 1200)
+        self.assertIsNone(channel.chemistry)
+
+    def test_the_statuses_have_the_nc3000_numbering(self) -> None:
+        names = {0: "idle", 3: "standby", 7: "charging", 8: "discharging", 9: "cooling", 10: "done"}
+        for byte, name in names.items():
+            channel = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=byte, mode=1))
+            self.assertEqual(channel.status, name, byte)
+
+    def test_the_modes_have_the_nc3000_numbering(self) -> None:
+        modes = {1: "charge", 2: "discharge", 3: "refresh", 4: "break_in", 5: "turbo"}
+        for byte, name in modes.items():
+            channel = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=7, mode=byte))
+            self.assertEqual(channel.mode, name, byte)
+
+    def test_an_empty_slot_and_a_flagged_error(self) -> None:
+        self.assertEqual(Nc3000Client._parse_channel(0, _nc_packet()).status, "empty")
+        flagged = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=2, error=1))
+        self.assertEqual((flagged.status, flagged.error), ("error", "error"))
+
+    async def test_a_start_is_refused_without_writing_anything(self) -> None:
+        client = Nc3000Client(FakeDevice())
+        await _connect(client)
+        client._client.writes.clear()
+
+        with self.assertRaises(ValueError):
+            await client.start_channel(0, chemistry="nimh")
+        with self.assertRaises(ValueError):
+            await client.start_all()
+
+        self.assertEqual(client._client.writes, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
+from .const import MODEL_MC5000
 from .coordinator import SkyrcConfigEntry, SkyrcCoordinator
 from .entity import SkyrcEntity
 from .models import ChannelData
@@ -39,6 +40,8 @@ class SlotSensorDescription(SensorEntityDescription):
     """A sensor reading one value of a slot."""
 
     value_fn: Callable[[ChannelData], StateType]
+    #: Models that report it; every model when empty.
+    models: frozenset[str] = frozenset()
 
 
 SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
@@ -52,6 +55,7 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         key="battery_type",
         translation_key="battery_type",
         icon="mdi:battery",
+        models=frozenset({MODEL_MC5000}),
         value_fn=lambda slot: slot.chemistry,
     ),
     SlotSensorDescription(
@@ -129,7 +133,11 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     entities: list[SensorEntity] = []
     for index in range(coordinator.channel_count):
-        entities.extend(SlotSensor(coordinator, index, description) for description in SLOT_SENSORS)
+        entities.extend(
+            SlotSensor(coordinator, index, description)
+            for description in SLOT_SENSORS
+            if not description.models or coordinator.model in description.models
+        )
         entities.append(CurveSensor(coordinator, index))
     async_add_entities(entities)
 

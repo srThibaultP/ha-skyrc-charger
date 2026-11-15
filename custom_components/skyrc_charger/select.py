@@ -90,9 +90,12 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities: list[SelectEntity] = [
-        ExpectedChemistrySelect(coordinator, index) for index in range(coordinator.channel_count)
-    ]
+    entities: list[SelectEntity] = []
+    if coordinator.supports_start:
+        entities.extend(
+            ExpectedChemistrySelect(coordinator, index)
+            for index in range(coordinator.channel_count)
+        )
     if coordinator.supports_settings:
         entities.extend(SettingSelect(coordinator, description) for description in SETTING_SELECTS)
     async_add_entities(entities)

@@ -47,6 +47,7 @@ class FakeClient(ChargerClient):
     def __init__(self, device: Any = None) -> None:
         self.connected = False
         self.unlocked: bool | None = True
+        self.model_code: str | None = "100214"
         self.passcode = "1234"
         self.fail: Exception | None = None
         self.calls: list[tuple[str, Any]] = []
@@ -121,7 +122,8 @@ def client() -> Generator[FakeClient]:
     fake = FakeClient()
     with (
         patch.dict(
-            "custom_components.skyrc_charger.coordinator.CLIENTS", {MODEL_MC5000: lambda _: fake}
+            "custom_components.skyrc_charger.coordinator.CLIENTS",
+            {MODEL_MC5000: lambda _: fake, "nc3000": lambda _: fake},
         ),
         patch("custom_components.skyrc_charger.config_flow.Mc5000Client", lambda _: fake),
     ):
@@ -140,13 +142,16 @@ def ble_device() -> Generator[BLEDevice]:
         yield device
 
 
-def make_entry(*, pref_disable_polling: bool = False, **options: Any) -> MockConfigEntry:
+def make_entry(
+    *, pref_disable_polling: bool = False, model: str = MODEL_MC5000, **options: Any
+) -> MockConfigEntry:
+    title = f"SkyRC {model.upper()}"
     return MockConfigEntry(
         pref_disable_polling=pref_disable_polling,
         domain=DOMAIN,
-        title="SkyRC MC5000",
-        unique_id=f"mc5000-{ADDRESS}",
-        data={CONF_ADDRESS: ADDRESS, CONF_MODEL: MODEL_MC5000, CONF_NAME: "SkyRC MC5000"},
+        title=title,
+        unique_id=f"{model}-{ADDRESS}",
+        data={CONF_ADDRESS: ADDRESS, CONF_MODEL: model, CONF_NAME: title},
         options={OPTION_PASSCODE: "1234", **options},
     )
 

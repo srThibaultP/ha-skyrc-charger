@@ -18,6 +18,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import AbortFlow
 
 from .const import (
     BLE_SERVICE_UUID,
@@ -27,7 +28,7 @@ from .const import (
     DEFAULT_PASSCODE,
     DOMAIN,
     MC5000_BLE_NAME_PATTERNS,
-    MODEL_MC5000,
+    MODEL_BY_CODE,
     MODEL_NAMES,
     OPTION_PASSCODE,
 )
@@ -35,7 +36,7 @@ from .mc5000_client import Mc5000Client
 
 _LOGGER = logging.getLogger(__name__)
 
-MANUAL_ENTRY = "manual"
+_BASE_ERRORS = ("cannot_connect", "unsupported_model")
 
 
 def _passcode_ok(value: str) -> bool:
@@ -52,14 +53,14 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # -- helpers ---------------------------------------------------------
 
-    async def _async_check(self, address: str, passcode: str) -> str | None:
-        """Try the charger; return an error key, or None when it answers."""
+    async def _async_check(self, address: str, passcode: str) -> tuple[str | None, str | None]:
+        """Try the charger; return (error key, model), the model when it answers."""
         if not _passcode_ok(passcode):
-            return "invalid_passcode_format"
+            return "invalid_passcode_format", None
 
         device = bluetooth.async_ble_device_from_address(self.hass, address, connectable=True)
         if device is None:
-            return "cannot_connect"
+            return "cannot_connect", None
 
         client = Mc5000Client(device)
         client.set_passcode(passcode)
@@ -67,11 +68,19 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
             await client.connect()
         except (BleakError, TimeoutError, OSError) as err:
             _LOGGER.debug("Could not connect to %s: %r", address, err)
-            return "cannot_connect"
+            return "cannot_connect", None
 
         unlocked = client.unlocked
+        code = client.model_code
         await client.disconnect()
-        return "invalid_auth" if unlocked is False else None
+
+        if unlocked is False:
+            return "invalid_auth", None
+        model = MODEL_BY_CODE.get(code or "")
+        if model is None:
+            _LOGGER.warning("Unsupported SkyRC model code %r at %s", code, address)
+            return "unsupported_model", None
+        return None, model
 
     def _nearby(self) -> dict[str, str]:
         """The chargers Home Assistant's Bluetooth can connect to."""
@@ -84,15 +93,21 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
                 found[info.address.upper()] = f"{name or 'SkyRC charger'} ({info.address})"
         return found
 
-    def _create(self, address: str, name: str, passcode: str) -> ConfigFlowResult:
+    def _create(self, address: str, model: str, name: str, passcode: str) -> ConfigFlowResult:
         return self.async_create_entry(
             title=name,
-            data={CONF_ADDRESS: address, CONF_MODEL: MODEL_MC5000, CONF_NAME: name},
+            data={CONF_ADDRESS: address, CONF_MODEL: model, CONF_NAME: name},
             options={OPTION_PASSCODE: passcode},
         )
 
-    async def _async_claim(self, address: str) -> None:
-        await self.async_set_unique_id(f"{MODEL_MC5000}-{address.upper()}")
+    def _abort_if_address_configured(self, address: str) -> None:
+        """One entry per charger, whichever model it turns out to be."""
+        for entry in self._async_current_entries():
+            if str(entry.data.get(CONF_ADDRESS, "")).upper() == address.upper():
+                raise AbortFlow("already_configured")
+
+    async def _async_claim(self, address: str, model: str) -> None:
+        await self.async_set_unique_id(f"{model}-{address.upper()}")
         self._abort_if_unique_id_configured()
 
     # -- steps -----------------------------------------------------------
@@ -100,7 +115,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
-        await self._async_claim(discovery_info.address)
+        self._abort_if_address_configured(discovery_info.address)
         self._discovery = discovery_info
         self.context["title_placeholders"] = {"name": discovery_info.name}
         return await self.async_step_confirm()
@@ -114,12 +129,12 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             passcode = str(user_input[OPTION_PASSCODE]).strip()
-            error = await self._async_check(self._discovery.address, passcode)
-            if error is None:
-                return self._create(
-                    self._discovery.address.upper(), MODEL_NAMES[MODEL_MC5000], passcode
-                )
-            errors[OPTION_PASSCODE] = error
+            address = self._discovery.address.upper()
+            error, model = await self._async_check(address, passcode)
+            if error is None and model is not None:
+                await self._async_claim(address, model)
+                return self._create(address, model, MODEL_NAMES[model], passcode)
+            errors["base" if error in _BASE_ERRORS else OPTION_PASSCODE] = error or "cannot_connect"
 
         return self.async_show_form(
             step_id="confirm",
@@ -136,12 +151,13 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             address = str(user_input[CONF_ADDRESS]).strip().upper()
             passcode = str(user_input[OPTION_PASSCODE]).strip()
-            await self._async_claim(address)
-            error = await self._async_check(address, passcode)
-            if error is None:
-                name = str(user_input.get(CONF_NAME) or MODEL_NAMES[MODEL_MC5000]).strip()
-                return self._create(address, name, passcode)
-            errors["base" if error == "cannot_connect" else OPTION_PASSCODE] = error
+            self._abort_if_address_configured(address)
+            error, model = await self._async_check(address, passcode)
+            if error is None and model is not None:
+                await self._async_claim(address, model)
+                name = str(user_input.get(CONF_NAME) or MODEL_NAMES[model]).strip()
+                return self._create(address, model, name, passcode)
+            errors["base" if error in _BASE_ERRORS else OPTION_PASSCODE] = error or "cannot_connect"
 
         address_field = vol.In(nearby) if nearby else str
         return self.async_show_form(
@@ -149,7 +165,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): address_field,
-                    vol.Optional(CONF_NAME, default=MODEL_NAMES[MODEL_MC5000]): str,
+                    vol.Optional(CONF_NAME): str,
                     vol.Required(OPTION_PASSCODE, default=DEFAULT_PASSCODE): str,
                 }
             ),
@@ -168,7 +184,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             passcode = str(user_input[OPTION_PASSCODE]).strip()
-            error = await self._async_check(entry.data[CONF_ADDRESS], passcode)
+            error, _model = await self._async_check(entry.data[CONF_ADDRESS], passcode)
             if error is None:
                 return self.async_update_reload_and_abort(
                     entry, options={**entry.options, OPTION_PASSCODE: passcode}
