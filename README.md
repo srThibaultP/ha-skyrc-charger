@@ -40,6 +40,11 @@ your model (MC3000 or MC5000), then pick or enter the BLE address. The
 device list comes from Home Assistant's own Bluetooth manager, so chargers
 seen through an ESPHome or Shelly Bluetooth proxy show up as well.
 
+The **MC5000** has a four digit passcode, shown on its screen (`0000` from
+the factory). Enter it during setup, or later under the integration's
+**Configure** button. With the wrong one the charger still reports its
+status, and a warning in the log says the passcode was refused.
+
 You can add **multiple chargers** (e.g. one MC3000 and one MC5000, or
 several of either) — each becomes its own config entry/device.
 

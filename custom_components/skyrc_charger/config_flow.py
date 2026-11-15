@@ -7,6 +7,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components import bluetooth
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
@@ -14,15 +15,22 @@ from .const import (
     CONF_ADDRESS,
     CONF_MODEL,
     CONF_NAME,
+    DEFAULT_PASSCODE,
     DOMAIN,
     MODEL_MC3000,
     MODEL_MC5000,
     MODELS,
     MODEL_NAMES,
+    OPTION_PASSCODE,
 )
 from .coordinator import BLE_NAME_PATTERNS_BY_MODEL, _name_matches
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _valid_passcode(value: Any) -> bool:
+    text = str(value)
+    return len(text) == 4 and text.isascii() and text.isdigit()
 
 
 class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -32,6 +40,17 @@ class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._model: str | None = None
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry) -> "SkyrcChargerOptionsFlow":
+        return SkyrcChargerOptionsFlow()
+
+    @classmethod
+    @callback
+    def async_supports_options_flow(cls, config_entry) -> bool:
+        # Only the MC5000 has anything to configure: its passcode.
+        return config_entry.data.get(CONF_MODEL) == MODEL_MC5000
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Step 1: pick the charger model."""
@@ -50,19 +69,24 @@ class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         model = self._model or MODEL_MC3000
 
         if user_input is not None:
-            address = str(user_input[CONF_ADDRESS]).strip()
-            name = str(user_input.get(CONF_NAME) or MODEL_NAMES[model]).strip()
+            passcode = str(user_input.get(OPTION_PASSCODE, DEFAULT_PASSCODE)).strip()
+            if not _valid_passcode(passcode):
+                errors[OPTION_PASSCODE] = "invalid_passcode"
+            else:
+                address = str(user_input[CONF_ADDRESS]).strip()
+                name = str(user_input.get(CONF_NAME) or MODEL_NAMES[model]).strip()
 
-            await self.async_set_unique_id(f"{model}-{address.upper()}")
-            self._abort_if_unique_id_configured()
+                await self.async_set_unique_id(f"{model}-{address.upper()}")
+                self._abort_if_unique_id_configured()
 
-            return self.async_create_entry(
-                title=name,
-                data={CONF_ADDRESS: address, CONF_NAME: name, CONF_MODEL: model},
-            )
+                return self.async_create_entry(
+                    title=name,
+                    data={CONF_ADDRESS: address, CONF_NAME: name, CONF_MODEL: model},
+                    options={OPTION_PASSCODE: passcode} if model == MODEL_MC5000 else {},
+                )
 
         devices = await self._async_discover_devices(model)
-        if not devices:
+        if not devices and not errors:
             errors["base"] = "no_devices_found"
 
         return self.async_show_form(
@@ -111,16 +135,30 @@ class SkyrcChargerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def _build_schema(self, devices: dict[str, str], model: str) -> vol.Schema:
         default_name = MODEL_NAMES[model]
-        if devices:
-            return vol.Schema(
-                {
-                    vol.Required(CONF_ADDRESS): vol.In(devices),
-                    vol.Optional(CONF_NAME, default=default_name): str,
-                }
-            )
-        return vol.Schema(
-            {
-                vol.Required(CONF_ADDRESS): str,
-                vol.Optional(CONF_NAME, default=default_name): str,
-            }
-        )
+        fields: dict = {
+            vol.Required(CONF_ADDRESS): vol.In(devices) if devices else str,
+            vol.Optional(CONF_NAME, default=default_name): str,
+        }
+        if model == MODEL_MC5000:
+            fields[vol.Optional(OPTION_PASSCODE, default=DEFAULT_PASSCODE)] = str
+        return vol.Schema(fields)
+
+
+class SkyrcChargerOptionsFlow(config_entries.OptionsFlow):
+    """Change the passcode an MC5000 is unlocked with."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+        current = self.config_entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE)
+
+        if user_input is not None:
+            passcode = str(user_input[OPTION_PASSCODE]).strip()
+            if _valid_passcode(passcode):
+                # Keep the other options (companion app mode) as they are.
+                return self.async_create_entry(
+                    data={**self.config_entry.options, OPTION_PASSCODE: passcode}
+                )
+            errors[OPTION_PASSCODE] = "invalid_passcode"
+
+        schema = vol.Schema({vol.Required(OPTION_PASSCODE, default=current): str})
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

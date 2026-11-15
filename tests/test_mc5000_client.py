@@ -283,6 +283,43 @@ class StartStopTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(mc5000.CMD_INFO, commands)
         self.assertIn(mc5000.CMD_VERIFY_PASSWORD, commands)
 
+    async def _unlock(self, client, answer: bytes) -> list[bytes]:
+        return await self._run(client, client._unlock, answer)
+
+    async def test_the_default_passcode_is_sent_digit_by_digit(self) -> None:
+        client = await self._connected()
+
+        writes = await self._unlock(client, bytes.fromhex("0f0474010176"))
+
+        self.assertEqual(writes, [bytes.fromhex("0f07740000000000" + "74")])
+        self.assertTrue(client.unlocked)
+
+    async def test_a_refused_passcode_is_reported_once(self) -> None:
+        # Real answer from a charger whose passcode is not the default.
+        client = await self._connected()
+        client.unlocked = None
+
+        with self.assertLogs(mc5000.__name__, level="WARNING") as logs:
+            await self._unlock(client, bytes.fromhex("0f0474010075"))
+        self.assertFalse(client.unlocked)
+        self.assertEqual(len(logs.records), 1)
+
+        with self.assertNoLogs(mc5000.__name__, level="WARNING"):
+            await self._unlock(client, bytes.fromhex("0f0474010075"))
+
+    async def test_a_custom_passcode_is_used(self) -> None:
+        client = await self._connected()
+        client.set_passcode("9081")
+
+        writes = await self._unlock(client, bytes.fromhex("0f0474010176"))
+
+        self.assertEqual(writes[0][3:8], bytes([0, 9, 0, 8, 1]))
+
+    def test_passcode_must_be_four_digits(self) -> None:
+        for bad in ("123", "12345", "12a4", ""):
+            with self.assertRaises(ValueError):
+                _client().set_passcode(bad)
+
     async def test_start_is_the_program_write_alone(self) -> None:
         client = await self._connected()
 

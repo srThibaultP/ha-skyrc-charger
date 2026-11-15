@@ -33,6 +33,9 @@ class FakeCharger:
     def set_ble_device(self, device) -> None:
         self.devices.append(device)
 
+    def set_passcode(self, passcode: str) -> None:
+        self.passcode = passcode
+
     async def connect(self) -> None:
         self.is_connected = True
 
@@ -52,6 +55,7 @@ def _coordinator(charger: FakeCharger) -> SkyrcChargerCoordinator:
     coordinator.address = "AA:BB:CC:DD:EE:FF"
     coordinator.channel_count = 4
     coordinator.pause_polling = False
+    coordinator.passcode = "0000"
     coordinator.charger = charger
     coordinator.data = None
     coordinator.last_update_success = True

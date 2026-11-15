@@ -14,12 +14,14 @@ from .const import (
     CHEMISTRY_OPTIONS,
     CONF_ADDRESS,
     CONF_MODEL,
+    DEFAULT_PASSCODE,
     DOMAIN,
     MAX_CHANNELS,
     MC3000_CHEMISTRY_OPTIONS,
     MC3000_MODE_OPTIONS,
     MODE_OPTIONS,
     MODEL_MC3000,
+    OPTION_PASSCODE,
 )
 from .logging_utils import install_library_log_filter, remove_library_log_filter
 
@@ -414,6 +416,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+
     _async_register_services(hass)
 
     # A paused or polling-disabled charger isn't contacted until someone asks
@@ -424,6 +428,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Hand a changed passcode to the coordinator; it reconnects with it."""
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if entry_data is None:
+        return
+    await entry_data["coordinator"].async_set_passcode(
+        entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE)
+    )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -101,6 +101,9 @@ class ChargerClient:
         """
         raise NotImplementedError
 
+    def set_passcode(self, passcode: str) -> None:
+        """Set the passcode to unlock the charger with, where it has one."""
+
     async def connect(self) -> None:
         raise NotImplementedError
 

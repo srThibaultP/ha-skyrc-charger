@@ -13,15 +13,37 @@
         "description": "Select the discovered device or enter its BLE address manually.",
         "data": {
           "address": "BLE address",
-          "name": "Name"
+          "name": "Name",
+          "passcode": "Passcode (MC5000)"
+        },
+        "data_description": {
+          "passcode": "The four digits the charger shows on its screen. 0000 from the factory."
         }
       }
     },
     "error": {
-      "no_devices_found": "No matching BLE devices found. Enter the address manually."
+      "no_devices_found": "No matching BLE devices found. Enter the address manually.",
+      "invalid_passcode": "The passcode is four digits."
     },
     "abort": {
       "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SkyRC MC5000",
+        "description": "The app sends the charger its passcode before anything else, and so does this integration.",
+        "data": {
+          "passcode": "Passcode"
+        },
+        "data_description": {
+          "passcode": "The four digits the charger shows on its screen. 0000 from the factory."
+        }
+      }
+    },
+    "error": {
+      "invalid_passcode": "The passcode is four digits."
     }
   }
 }

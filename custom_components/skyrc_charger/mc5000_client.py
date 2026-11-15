@@ -9,7 +9,8 @@ MC5000 with the same command set as the NC3000:
 Commands used here:
 
     0x57  device info (model code, firmware/hardware version)
-    0x74  verify password (default "0000")
+    0x74  verify the passcode shown on the charger's screen ("0000" from
+          the factory); answers 1 when it matches
     0x65  firmware update check (sent with "no update" by the app)
     0x91  slot status, one slot per request (slot bitmask)
     0x94  write a slot program; the charger starts it right away
@@ -30,7 +31,12 @@ from bleak import BleakClient
 from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 
-from .const import BLE_CHAR_UUID, BLE_SERVICE_UUID, MC5000_BLE_NAME_PATTERNS
+from .const import (
+    BLE_CHAR_UUID,
+    BLE_SERVICE_UUID,
+    DEFAULT_PASSCODE,
+    MC5000_BLE_NAME_PATTERNS,
+)
 from .models import ChannelData, ChargerClient, ChargerState, DeviceData
 
 _LOGGER = logging.getLogger(__name__)
@@ -161,6 +167,13 @@ def mode_byte(chemistry: str, mode: str) -> int:
     return modes[mode]
 
 
+def passcode_bytes(passcode: str) -> bytes:
+    """One byte per digit, as the 0x74 command wants them."""
+    if len(passcode) != 4 or not passcode.isascii() or not passcode.isdigit():
+        raise ValueError("The MC5000 passcode is four digits")
+    return bytes(int(digit) for digit in passcode)
+
+
 def mode_name(chemistry: str | None, value: int) -> str | None:
     modes = MODES_BY_CHEMISTRY.get(chemistry or "")
     if modes is None:
@@ -197,6 +210,9 @@ class Mc5000Client(ChargerClient):
         self._device_info = DeviceData(name="SkyRC MC5000", model="MC5000")
         self._connect_lock = asyncio.Lock()
         self._connected = False
+        self._passcode = DEFAULT_PASSCODE
+        #: None until the charger answered, then whether it took the passcode.
+        self.unlocked: bool | None = None
         # last known config per channel, used so "start" can be called
         # without forcing the user to re-specify chemistry every time
         self._last_config: dict[int, dict] = {}
@@ -212,6 +228,28 @@ class Mc5000Client(ChargerClient):
     def set_ble_device(self, ble_device) -> None:
         """Adopt a freshly discovered BLEDevice for the next connect."""
         self._device = ble_device
+
+    def set_passcode(self, passcode: str) -> None:
+        passcode_bytes(passcode)  # validate early
+        self._passcode = passcode
+
+    async def _unlock(self) -> None:
+        resp = await self._request(
+            CMD_VERIFY_PASSWORD, b"\x00" + passcode_bytes(self._passcode)
+        )
+        if resp is None or len(resp) < 5:
+            self.unlocked = None
+            return
+
+        unlocked = resp[4] == 1
+        if not unlocked and self.unlocked is not False:
+            # Once per outage of the right passcode, not once per reconnect.
+            _LOGGER.warning(
+                "MC5000: the charger refused the passcode. It still reports its "
+                "status, but may ignore a start or a stop. Enter the passcode "
+                "shown on the charger's screen in the integration's options"
+            )
+        self.unlocked = unlocked
 
     def _notify_handler(self, _characteristic, data: bytearray) -> None:
         self._notify_queue.put_nowait(bytes(data))
@@ -265,10 +303,10 @@ class Mc5000Client(ChargerClient):
                     pass
 
                 # Same opening as the app: identify the charger, unlock it
-                # with the default password, decline the firmware update.
+                # with its passcode, decline the firmware update.
                 # 0xFE is deliberately absent: it is the stop command.
                 device_info = await self._query_device_info()
-                await self._send(CMD_VERIFY_PASSWORD, b"\x00\x00\x00\x00\x00")
+                await self._unlock()
                 await self._send(CMD_FIRMWARE_CHECK, b"\x00\x00")
 
                 if device_info:
@@ -572,7 +610,8 @@ class Mc5000Client(ChargerClient):
         resp = await self._request(CMD_CONFIG, payload)
         # The charger answers 0x94 with 1 when it took the program.
         if resp is not None and len(resp) > 4 and resp[4] != 1:
-            raise BleakError(f"MC5000 refused the program for slot {channel + 1}")
+            reason = " (the passcode was refused)" if self.unlocked is False else ""
+            raise BleakError(f"MC5000 refused the program for slot {channel + 1}{reason}")
 
     async def start_channel(self, channel: int, **kwargs) -> None:
         """Write a complete program to the slot, which starts it.
