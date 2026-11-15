@@ -41,7 +41,6 @@ class BasicSettingSwitch(SkyrcEntity, SwitchEntity):
         super().__init__(coordinator, key)
         self._key = key
         self._attr_translation_key = key
-        self._attr_icon = "mdi:volume-high" if key == "beep" else "mdi:monitor-star"
 
     @property
     def is_on(self) -> bool | None:
@@ -59,7 +58,6 @@ class WarningToneSwitch(SkyrcEntity, SwitchEntity):
     """The charger's warning tone, written to the charger when toggled."""
 
     _attr_translation_key = "warning_tone"
-    _attr_icon = "mdi:alert-octagon-outline"
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: SkyrcCoordinator) -> None:
@@ -81,7 +79,6 @@ class AutoFetchCurvesSwitch(SkyrcAlwaysAvailableEntity, SwitchEntity, RestoreEnt
     """Keep the voltage curves of the working slots refreshed."""
 
     _attr_translation_key = "auto_fetch_voltage_curves"
-    _attr_icon = "mdi:chart-line"
 
     def __init__(self, coordinator: SkyrcCoordinator) -> None:
         super().__init__(coordinator, "auto_fetch_voltage_curves")

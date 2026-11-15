@@ -78,4 +78,9 @@ jobs:
           pip install pytest-homeassistant-custom-component bleak-retry-connector
           aiousbwatcher bluetooth-adapters bluetooth-auto-recovery
           bluetooth-data-tools dbus-fast habluetooth pyserial pyudev
-      - run: pytest tests_ha
+      # The two suites cover different halves (the drivers, and the entities
+      # and flows); the integration has to be covered at 95 % by both.
+      - run: pip install coverage
+      - run: coverage run -m unittest discover -s tests
+      - run: coverage run --append -m pytest tests_ha
+      - run: coverage report --fail-under=95

@@ -239,6 +239,41 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Point the entry at another Bluetooth address (a replaced adapter or charger)."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            address = str(user_input[CONF_ADDRESS]).strip().upper()
+            passcode = str(entry.options.get(OPTION_PASSCODE, ""))
+            if address != str(entry.data[CONF_ADDRESS]).upper():
+                self._abort_if_address_configured(address)
+            error, model, _passcode = await self._async_check(address, passcode)
+            if error is None and model != entry.data.get(CONF_MODEL):
+                error = "wrong_model"
+            if error is None:
+                return self.async_update_reload_and_abort(
+                    entry, unique_id=f"{model}-{address}", data_updates={CONF_ADDRESS: address}
+                )
+            errors["base"] = error
+
+        nearby = self._nearby()
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS, default=entry.data[CONF_ADDRESS]): vol.In(nearby)
+                    if entry.data[CONF_ADDRESS].upper() in nearby
+                    else str,
+                }
+            ),
+            description_placeholders={"name": entry.title},
+            errors=errors,
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> SkyrcOptionsFlow:

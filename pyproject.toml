@@ -3,6 +3,10 @@ source = ["custom_components/skyrc_charger"]
 
 [tool.coverage.report]
 show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+]
 
 [tool.ruff]
 line-length = 100

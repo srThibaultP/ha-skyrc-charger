@@ -87,20 +87,17 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
     SlotSensorDescription(
         key="status",
         translation_key="status",
-        icon="mdi:state-machine",
         value_fn=lambda slot: slot.status,
     ),
     SlotSensorDescription(
         key="battery_type",
         translation_key="battery_type",
-        icon="mdi:battery",
         models=frozenset({MODEL_MC3000, MODEL_MC5000}),
         value_fn=lambda slot: slot.chemistry,
     ),
     SlotSensorDescription(
         key="mode",
         translation_key="mode",
-        icon="mdi:battery-sync",
         value_fn=lambda slot: slot.mode,
     ),
     SlotSensorDescription(
@@ -129,7 +126,6 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         exclude=NO_SLOT_READINGS,
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:battery-plus",
         value_fn=lambda slot: slot.capacity,
     ),
     SlotSensorDescription(
@@ -167,21 +163,18 @@ SLOT_SENSORS: tuple[SlotSensorDescription, ...] = (
         exclude=NO_SLOT_READINGS,
         native_unit_of_measurement="mΩ",
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:omega",
         value_fn=lambda slot: slot.resistance,
     ),
     SlotSensorDescription(
         key="time",
         translation_key="time",
         exclude=NO_SLOT_READINGS,
-        icon="mdi:timer-outline",
         value_fn=lambda slot: _format_seconds(slot.time),
     ),
     SlotSensorDescription(
         key="error",
         translation_key="error",
         exclude=NO_SLOT_READINGS,
-        icon="mdi:alert-circle-outline",
         attributes_fn=_error_attributes,
         value_fn=lambda slot: slot.error or "none",
     ),
@@ -218,7 +211,6 @@ DEVICE_SENSORS: tuple[DeviceSensorDescription, ...] = (
     DeviceSensorDescription(
         key="device_error",
         translation_key="device_error",
-        icon="mdi:alert-circle-outline",
         models=frozenset({MODEL_PSU650}),
         value_fn=lambda device: device.error or "none",
     ),
@@ -299,7 +291,6 @@ class CurveSensor(SkyrcEntity, SensorEntity):
     """
 
     _attr_translation_key = "voltage_curve_points"
-    _attr_icon = "mdi:chart-line"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _unrecorded_attributes = frozenset({"samples_mv", "samples_v"})
 

@@ -1,0 +1,96 @@
+{
+  "entity": {
+    "button": {
+      "fetch_voltage_curve": {
+        "default": "mdi:chart-line"
+      },
+      "refresh": {
+        "default": "mdi:refresh"
+      },
+      "slot_start": {
+        "default": "mdi:play-circle-outline"
+      },
+      "slot_stop": {
+        "default": "mdi:stop-circle-outline"
+      },
+      "start_all": {
+        "default": "mdi:play-circle-outline"
+      },
+      "stop_all": {
+        "default": "mdi:stop-circle-outline"
+      }
+    },
+    "select": {
+      "backlight": {
+        "default": "mdi:brightness-6"
+      },
+      "beep_volume": {
+        "default": "mdi:volume-high"
+      },
+      "cooling_fan": {
+        "default": "mdi:fan"
+      },
+      "display_timeout": {
+        "default": "mdi:monitor-shimmer"
+      },
+      "end_notification": {
+        "default": "mdi:bell-check-outline"
+      },
+      "expected_chemistry": {
+        "default": "mdi:flask-outline"
+      },
+      "input_voltage": {
+        "default": "mdi:flash-triangle-outline"
+      },
+      "notification_volume": {
+        "default": "mdi:bell-ring-outline"
+      },
+      "sleep_timer": {
+        "default": "mdi:sleep"
+      }
+    },
+    "sensor": {
+      "battery_type": {
+        "default": "mdi:battery"
+      },
+      "capacity": {
+        "default": "mdi:battery-plus"
+      },
+      "device_error": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "error": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "mode": {
+        "default": "mdi:battery-sync"
+      },
+      "resistance": {
+        "default": "mdi:omega"
+      },
+      "status": {
+        "default": "mdi:state-machine"
+      },
+      "time": {
+        "default": "mdi:timer-outline"
+      },
+      "voltage_curve_points": {
+        "default": "mdi:chart-line"
+      }
+    },
+    "switch": {
+      "auto_fetch_voltage_curves": {
+        "default": "mdi:chart-line"
+      },
+      "beep": {
+        "default": "mdi:volume-high"
+      },
+      "screensaver": {
+        "default": "mdi:monitor-star"
+      },
+      "warning_tone": {
+        "default": "mdi:alert-octagon-outline"
+      }
+    }
+  }
+}

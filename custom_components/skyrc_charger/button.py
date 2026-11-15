@@ -34,19 +34,16 @@ DEVICE_BUTTONS = (
     DeviceButtonDescription(
         key="refresh",
         translation_key="refresh",
-        icon="mdi:refresh",
         press_fn=lambda coordinator: coordinator.async_request_refresh(),
     ),
     DeviceButtonDescription(
         key="start_all",
         translation_key="start_all",
-        icon="mdi:play-circle-outline",
         press_fn=lambda coordinator: coordinator.async_start_all(),
     ),
     DeviceButtonDescription(
         key="stop_all",
         translation_key="stop_all",
-        icon="mdi:stop-circle-outline",
         press_fn=lambda coordinator: coordinator.async_stop_all(),
     ),
 )
@@ -55,19 +52,16 @@ SLOT_BUTTONS = (
     SlotButtonDescription(
         key="start",
         translation_key="slot_start",
-        icon="mdi:play-circle-outline",
         press_fn=lambda coordinator, slot: coordinator.async_start_slot(slot),
     ),
     SlotButtonDescription(
         key="stop",
         translation_key="slot_stop",
-        icon="mdi:stop-circle-outline",
         press_fn=lambda coordinator, slot: coordinator.async_stop_slot(slot),
     ),
     SlotButtonDescription(
         key="fetch_voltage_curve",
         translation_key="fetch_voltage_curve",
-        icon="mdi:chart-line",
         press_fn=_fetch_curve,
     ),
 )
