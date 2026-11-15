@@ -818,5 +818,95 @@ class Type228Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client._client.writes, [])
 
 
+nc2200 = load("nc2200_client")
+Nc2200Client = nc2200.Nc2200Client
+
+
+def _nc2200_packet(**fields) -> bytes:
+    packet = bytearray(20)
+    packet[0:3] = b"\x0f\x12\x91"
+    packet[3] = fields.get("slot", 0)
+    packet[4:6] = fields.get("current", 0).to_bytes(2, "big")
+    packet[6:8] = fields.get("voltage", 0).to_bytes(2, "big")
+    packet[8:10] = fields.get("temperature", 0).to_bytes(2, "big")
+    packet[10:12] = fields.get("capacity", 0).to_bytes(2, "big")
+    packet[12:14] = fields.get("elapsed", 0).to_bytes(2, "big")
+    packet[14:16] = fields.get("resistance", 0).to_bytes(2, "big")
+    packet[16] = fields.get("status", 0)
+    packet[17] = fields.get("mode", 0)
+    packet[18] = fields.get("error", 0)
+    packet[19] = sum(packet[2:19]) & 0xFF
+    return bytes(packet)
+
+
+class Nc2200Test(unittest.IsolatedAsyncioTestCase):
+    def test_a_charging_slot(self) -> None:
+        channel = Nc2200Client._parse_channel(
+            1,
+            _nc2200_packet(
+                slot=1, current=800, voltage=1350, capacity=120, elapsed=900, status=7, mode=1
+            ),
+        )
+
+        self.assertEqual((channel.status, channel.mode), ("charging", "charge"))
+        self.assertEqual((channel.current, channel.voltage, channel.time), (0.8, 1.35, 900))
+
+    def test_the_statuses_and_modes_have_the_nc2200_numbering(self) -> None:
+        statuses = {
+            0: "idle",
+            3: "standby",
+            7: "charging",
+            8: "discharging",
+            9: "cooling",
+            10: "done",
+        }
+        for byte, name in statuses.items():
+            channel = Nc2200Client._parse_channel(0, _nc2200_packet(voltage=1300, status=byte))
+            self.assertEqual(channel.status, name, byte)
+        modes = {1: "charge", 2: "discharge", 3: "refresh", 4: "break_in", 5: "turbo"}
+        for byte, name in modes.items():
+            channel = Nc2200Client._parse_channel(
+                0, _nc2200_packet(voltage=1300, status=7, mode=byte)
+            )
+            self.assertEqual(channel.mode, name, byte)
+
+    def test_an_empty_slot_and_an_error_flag(self) -> None:
+        self.assertEqual(Nc2200Client._parse_channel(0, _nc2200_packet()).status, "empty")
+        flagged = Nc2200Client._parse_channel(0, _nc2200_packet(voltage=1300, status=2, error=1))
+        self.assertEqual((flagged.status, flagged.error), ("error", "error"))
+
+    async def test_a_slot_is_asked_for_by_its_index(self) -> None:
+        client = Nc2200Client(FakeDevice())
+        await _connect(client)
+        client._client.writes.clear()
+
+        async def feed():
+            for _ in range(2000):
+                await asyncio.sleep(0)
+                if len(client._client.writes) > len(fed):
+                    fed.append(1)
+                    client._notify_queue.put_nowait(_nc2200_packet(slot=len(fed) - 1, voltage=1300))
+
+        fed: list[int] = []
+        task = asyncio.create_task(feed())
+        try:
+            state = await client.async_update()
+        finally:
+            task.cancel()
+
+        asked = [write[3] for write in client._client.writes]
+        self.assertEqual(asked, [0, 1, 2, 3])
+        self.assertEqual(len(state.channels), 4)
+
+    async def test_a_start_is_refused_without_writing_anything(self) -> None:
+        client = Nc2200Client(FakeDevice())
+        await _connect(client)
+        client._client.writes.clear()
+
+        with self.assertRaises(ValueError):
+            await client.start_channel(0, chemistry="nimh")
+        self.assertEqual(client._client.writes, [])
+
+
 if __name__ == "__main__":
     unittest.main()

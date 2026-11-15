@@ -123,7 +123,7 @@ def client() -> Generator[FakeClient]:
     with (
         patch.dict(
             "custom_components.skyrc_charger.coordinator.CLIENTS",
-            {MODEL_MC5000: lambda _: fake, "nc3000": lambda _: fake},
+            {MODEL_MC5000: lambda _: fake, "nc3000": lambda _: fake, "nc2200": lambda _: fake},
         ),
         patch("custom_components.skyrc_charger.config_flow.Mc5000Client", lambda _: fake),
     ):

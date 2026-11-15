@@ -244,7 +244,7 @@ async def test_an_nc3000_is_recognised_by_its_model_code(
 async def test_a_model_the_integration_does_not_know_is_refused(
     hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
 ) -> None:
-    client.model_code = "100181"  # an NC2200, say
+    client.model_code = "100999"  # a model nobody knows
     with patch("homeassistant.components.bluetooth.async_discovered_service_info", return_value=[]):
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
 

@@ -22,7 +22,9 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities: list[SwitchEntity] = [AutoFetchCurvesSwitch(coordinator)]
+    entities: list[SwitchEntity] = []
+    if coordinator.supports_curves:
+        entities.append(AutoFetchCurvesSwitch(coordinator))
     if coordinator.supports_settings:
         entities.append(WarningToneSwitch(coordinator))
     async_add_entities(entities)
