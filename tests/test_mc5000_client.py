@@ -641,7 +641,7 @@ class Nc3000Test(unittest.IsolatedAsyncioTestCase):
 
     def test_a_charging_slot(self) -> None:
         channel = Nc3000Client._parse_channel(
-            0, _nc_packet(current=1000, voltage=1380, capacity=300, elapsed=1200, status=7, mode=1)
+            0, _nc_packet(current=1000, voltage=1380, capacity=300, elapsed=1200, status=2, mode=0)
         )
 
         self.assertEqual(channel.status, "charging")
@@ -650,22 +650,22 @@ class Nc3000Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(channel.time, 1200)
         self.assertIsNone(channel.chemistry)
 
-    def test_the_statuses_have_the_nc3000_numbering(self) -> None:
-        names = {0: "idle", 3: "standby", 7: "charging", 8: "discharging", 9: "cooling", 10: "done"}
+    def test_the_statuses_are_the_mc5000s(self) -> None:
+        names = {0: "idle", 1: "standby", 2: "charging", 3: "discharging", 4: "resting", 5: "done"}
         for byte, name in names.items():
-            channel = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=byte, mode=1))
+            channel = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=byte))
             self.assertEqual(channel.status, name, byte)
 
     def test_the_modes_have_the_nc3000_numbering(self) -> None:
-        modes = {1: "charge", 2: "discharge", 3: "refresh", 4: "break_in", 5: "turbo"}
+        modes = {0: "charge", 1: "discharge", 2: "break_in", 3: "cycle", 4: "max_boost", 5: "turbo"}
         for byte, name in modes.items():
-            channel = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=7, mode=byte))
+            channel = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=2, mode=byte))
             self.assertEqual(channel.mode, name, byte)
 
-    def test_an_empty_slot_and_a_flagged_error(self) -> None:
+    def test_an_empty_slot_and_an_error_code(self) -> None:
         self.assertEqual(Nc3000Client._parse_channel(0, _nc_packet()).status, "empty")
-        flagged = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=2, error=1))
-        self.assertEqual((flagged.status, flagged.error), ("error", "error"))
+        failed = Nc3000Client._parse_channel(0, _nc_packet(voltage=1300, status=1, error=12))
+        self.assertEqual((failed.status, failed.error), ("error", "reversed_polarity"))
 
     async def test_a_start_is_refused_without_writing_anything(self) -> None:
         client = Nc3000Client(FakeDevice())
