@@ -15,6 +15,7 @@ Commands used here:
     0x91  slot status, one slot per request (slot bitmask)
     0x94  write a slot program; the charger starts it right away
     0x96  read the system settings (beeps, backlight, sleep timer)
+    0x95  write them back, all at once; answers 1 when it took them
     0x98  read a slot's logged voltage curve, sent back in several pages
     0xFE  stop the slots in the given bitmask
 
@@ -60,6 +61,7 @@ CMD_STATUS = 0x91
 CMD_QUERY_SLOT_SETTINGS = 0x93
 CMD_CONFIG = 0x94
 CMD_QUERY_SYSTEM = 0x96
+CMD_WRITE_SYSTEM = 0x95
 CMD_VOLTAGE_CURVE = 0x98
 CMD_STOP = 0xFE
 
@@ -266,6 +268,21 @@ ERROR_BYTE_NAME = {
 VOLUME_NAME = {0: "off", 1: "low", 2: "medium", 3: "high"}
 END_NOTIFICATION_NAME = {0: "once", 1: "repeat"}
 BACKLIGHT_NAME = {1: "low", 2: "medium", 3: "high"}
+# Sleep timer steps the app offers, in minutes; 0 is "off".
+SLEEP_TIMER_MINUTES = (0, 1, 3, 5, 10, 15, 30, 60, 120)
+
+SETTING_OPTIONS = {
+    "beep_volume": tuple(VOLUME_NAME.values()),
+    "notification_volume": tuple(VOLUME_NAME.values()),
+    "end_notification": tuple(END_NOTIFICATION_NAME.values()),
+    "backlight": tuple(BACKLIGHT_NAME.values()),
+}
+
+# The charger sometimes drops the command that follows a write; settle, then
+# read back to know whether it was applied.
+SETTINGS_ATTEMPTS = 3
+SETTINGS_SETTLE_SECONDS = 0.5
+SETTINGS_ANSWER_SECONDS = 3.0
 
 CHANNEL_BITMASK = [0x01, 0x02, 0x04, 0x08]  # index -> bitmask, 4 slots
 
@@ -318,6 +335,7 @@ def _u16(value: int) -> bytes:
 class Mc5000Client(ChargerClient):
     channel_count = 4
     supports_voltage_curves = True
+    supports_settings = True
 
     def __init__(self, ble_device) -> None:
         self._device = ble_device
@@ -589,6 +607,79 @@ class Mc5000Client(ChargerClient):
     async def _query_system_settings(self) -> None:
         resp = await self._request(CMD_QUERY_SYSTEM, b"\x04")
         self._apply_system_settings(self._device_info, resp)
+
+    @staticmethod
+    def _settings_bytes(device: DeviceData) -> bytes:
+        """The six setting bytes of 0x95, in the order 0x96 reports them."""
+
+        def index(names: dict[int, str], value: str | None, default: int) -> int:
+            for byte, name in names.items():
+                if name == value:
+                    return byte
+            return default
+
+        return bytes(
+            [
+                index(VOLUME_NAME, device.beep_volume, 0),
+                index(VOLUME_NAME, device.notification_volume, 1),
+                index(END_NOTIFICATION_NAME, device.end_notification, 0),
+                index(BACKLIGHT_NAME, device.backlight, 1),
+                1 if device.warning_tone else 0,
+                device.sleep_timer_minutes or 0,
+            ]
+        )
+
+    async def async_set_settings(self, **changes) -> None:
+        """Change some of the charger's settings and check they stuck.
+
+        0x95 writes all of them at once, so start from what the charger
+        reports now, change only what was asked, write, then read back.
+        Accepted keys: beep_volume, notification_volume, end_notification,
+        backlight (names as the sensors report them), warning_tone (bool)
+        and sleep_timer_minutes (one of SLEEP_TIMER_MINUTES).
+        """
+        for key, value in changes.items():
+            if key in SETTING_OPTIONS:
+                if value not in SETTING_OPTIONS[key]:
+                    raise ValueError(f"{key} must be one of {', '.join(SETTING_OPTIONS[key])}")
+            elif key == "sleep_timer_minutes":
+                if value not in SLEEP_TIMER_MINUTES:
+                    raise ValueError(f"sleep_timer_minutes must be one of {SLEEP_TIMER_MINUTES}")
+            elif key != "warning_tone":
+                raise ValueError(f"Unknown MC5000 setting {key!r}")
+
+        current = DeviceData()
+        for _ in range(SETTINGS_ATTEMPTS):
+            self._apply_system_settings(current, await self._request(CMD_QUERY_SYSTEM, b"\x04"))
+            if current.beep_volume is not None:
+                break
+        else:
+            raise BleakError("MC5000 did not report its settings")
+
+        wanted = DeviceData(**{**current.__dict__, **changes})
+        payload = bytes([0x00]) + self._settings_bytes(wanted) + bytes(10)
+
+        for _ in range(SETTINGS_ATTEMPTS):
+            await self._request(CMD_WRITE_SYSTEM, payload, timeout=SETTINGS_ANSWER_SECONDS)
+            await asyncio.sleep(SETTINGS_SETTLE_SECONDS)
+
+            applied = DeviceData()
+            self._apply_system_settings(applied, await self._request(CMD_QUERY_SYSTEM, b"\x04"))
+            if applied.beep_volume is not None and self._settings_bytes(
+                applied
+            ) == self._settings_bytes(wanted):
+                for field in (
+                    "beep_volume",
+                    "notification_volume",
+                    "end_notification",
+                    "backlight",
+                    "warning_tone",
+                    "sleep_timer_minutes",
+                ):
+                    setattr(self._device_info, field, getattr(applied, field))
+                return
+
+        raise BleakError("The MC5000 did not apply the new settings")
 
     @staticmethod
     def _parse_channel(index: int, packet: bytes) -> ChannelData:

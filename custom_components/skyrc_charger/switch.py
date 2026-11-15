@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN
 from .entity import SkyrcEntity
@@ -10,6 +11,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
     entities = []
+    if coordinator.supports_settings:
+        entities.append(SkyrcWarningToneSwitch(coordinator, entry.entry_id))
     if coordinator.supports_voltage_curves:
         entities.append(SkyrcAutoFetchVoltageCurvesSwitch(coordinator, entry.entry_id))
 
@@ -22,6 +25,29 @@ class SkyrcBaseSwitch(SkyrcEntity, SwitchEntity):
     @property
     def available(self) -> bool:
         return True
+
+
+class SkyrcWarningToneSwitch(SkyrcEntity, SwitchEntity):
+    """The charger's warning tone, written to the charger when toggled."""
+
+    _attr_name = "Warning Tone"
+    _attr_icon = "mdi:alert-octagon-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator, entry_id)
+        self._attr_unique_id = f"{entry_id}_warning_tone"
+
+    @property
+    def is_on(self) -> bool | None:
+        device = (self.coordinator.data or {}).get("device")
+        return getattr(device, "warning_tone", None) if device else None
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self.coordinator.async_set_charger_settings(warning_tone=True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self.coordinator.async_set_charger_settings(warning_tone=False)
 
 
 class SkyrcAutoFetchVoltageCurvesSwitch(SkyrcBaseSwitch):

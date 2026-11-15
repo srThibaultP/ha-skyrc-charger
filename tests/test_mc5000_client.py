@@ -520,5 +520,93 @@ class VoltageCurveTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(client._notify_queue.empty())
 
 
+def _settings_frame(values: list[int]) -> bytes:
+    body = bytes([0x96, 0x10, *values])
+    return bytes([0x0F, len(body) + 1]) + body + bytes([sum(body) & 0xFF])
+
+
+class SettingsTest(unittest.IsolatedAsyncioTestCase):
+    """Writing the charger's settings, with a charger that drops a command."""
+
+    async def asyncSetUp(self) -> None:
+        mc5000.SETTINGS_SETTLE_SECONDS = 0
+        mc5000.SETTINGS_ANSWER_SECONDS = 0.05
+        self.client = _client()
+        await _connect(self.client)
+        self.client._client.writes.clear()
+        # beep, notification, end notification, backlight, warning, sleep
+        self.state = [0, 1, 0, 1, 1, 0]
+        self.drop_next_write = False
+        self.fake = self.client._client
+
+        async def write(_char, data, response=False):
+            self.fake.writes.append(bytes(data))
+            command = data[2]
+            if command == mc5000.CMD_QUERY_SYSTEM:
+                self.client._notify_queue.put_nowait(_settings_frame(self.state))
+            elif command == mc5000.CMD_WRITE_SYSTEM:
+                if self.drop_next_write:
+                    self.drop_next_write = False
+                    return
+                self.state = list(data[4:10])
+                self.client._notify_queue.put_nowait(bytes.fromhex("0f04951001a6"))
+
+        self.fake.write_gatt_char = write
+
+    async def test_only_the_asked_setting_changes(self) -> None:
+        await self.client.async_set_settings(backlight="high")
+
+        writes = [w for w in self.fake.writes if w[2] == mc5000.CMD_WRITE_SYSTEM]
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(self.state, [0, 1, 0, 3, 1, 0])
+        self.assertEqual(len(writes[0]), 21)  # 17 data bytes + header + checksum
+        self.assertEqual(self.client._device_info.backlight, "high")
+
+    async def test_every_setting_has_its_own_byte(self) -> None:
+        await self.client.async_set_settings(
+            beep_volume="high",
+            notification_volume="off",
+            end_notification="repeat",
+            warning_tone=False,
+            sleep_timer_minutes=15,
+        )
+
+        self.assertEqual(self.state, [3, 0, 1, 1, 0, 15])
+
+    async def test_a_dropped_write_is_retried_and_checked(self) -> None:
+        self.drop_next_write = True
+
+        await self.client.async_set_settings(backlight="medium")
+
+        writes = [w for w in self.fake.writes if w[2] == mc5000.CMD_WRITE_SYSTEM]
+        self.assertEqual(len(writes), 2)
+        self.assertEqual(self.state[3], 2)
+
+    async def test_a_setting_that_never_sticks_raises(self) -> None:
+        async def deaf(_char, data, response=False):
+            self.fake.writes.append(bytes(data))
+            if data[2] == mc5000.CMD_QUERY_SYSTEM:
+                self.client._notify_queue.put_nowait(_settings_frame(self.state))
+            else:
+                # Acknowledges the write without applying it.
+                self.client._notify_queue.put_nowait(bytes.fromhex("0f04951001a6"))
+
+        self.fake.write_gatt_char = deaf
+
+        with self.assertRaises(mc5000.BleakError):
+            await self.client.async_set_settings(backlight="high")
+
+    async def test_unknown_values_are_refused_before_any_write(self) -> None:
+        for changes in (
+            {"backlight": "blinding"},
+            {"sleep_timer_minutes": 7},
+            {"volume": "high"},
+        ):
+            with self.assertRaises(ValueError):
+                await self.client.async_set_settings(**changes)
+
+        self.assertEqual(self.fake.writes, [])
+
+
 if __name__ == "__main__":
     unittest.main()
