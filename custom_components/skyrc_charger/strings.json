@@ -34,17 +34,26 @@
         "data_description": {
           "passcode": "The four digits the charger shows on its screen. 1234 from the factory."
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure {name}",
+        "description": "Enter the Bluetooth address of the charger, if it changed. The passcode is kept.",
+        "data": {
+          "address": "Bluetooth address"
+        }
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to the charger. It must be on and reachable by a Bluetooth adapter or an active Bluetooth proxy.",
       "invalid_auth": "The charger refused the passcode.",
       "invalid_passcode_format": "The passcode is four digits.",
-      "unsupported_model": "This charger is not a model the integration supports yet."
+      "unsupported_model": "This charger is not a model the integration supports yet.",
+      "wrong_model": "This is not the same model of charger as the entry."
     },
     "abort": {
       "already_configured": "This charger is already configured.",
-      "reauth_successful": "The new passcode works."
+      "reauth_successful": "The new passcode works.",
+      "reconfigure_successful": "The new address works."
     }
   },
   "options": {

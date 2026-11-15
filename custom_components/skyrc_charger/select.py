@@ -44,7 +44,6 @@ SETTING_SELECTS = (
     SettingSelectDescription(
         key="beep_volume",
         translation_key="beep_volume",
-        icon="mdi:volume-high",
         options=list(SETTING_OPTIONS["beep_volume"]),
         value_fn=lambda device: device.beep_volume,
         setting="beep_volume",
@@ -52,7 +51,6 @@ SETTING_SELECTS = (
     SettingSelectDescription(
         key="notification_volume",
         translation_key="notification_volume",
-        icon="mdi:bell-ring-outline",
         options=list(SETTING_OPTIONS["notification_volume"]),
         value_fn=lambda device: device.notification_volume,
         setting="notification_volume",
@@ -60,7 +58,6 @@ SETTING_SELECTS = (
     SettingSelectDescription(
         key="end_notification",
         translation_key="end_notification",
-        icon="mdi:bell-check-outline",
         options=list(SETTING_OPTIONS["end_notification"]),
         value_fn=lambda device: device.end_notification,
         setting="end_notification",
@@ -68,7 +65,6 @@ SETTING_SELECTS = (
     SettingSelectDescription(
         key="backlight",
         translation_key="backlight",
-        icon="mdi:brightness-6",
         options=list(SETTING_OPTIONS["backlight"]),
         value_fn=lambda device: device.backlight,
         setting="backlight",
@@ -76,7 +72,6 @@ SETTING_SELECTS = (
     SettingSelectDescription(
         key="sleep_timer",
         translation_key="sleep_timer",
-        icon="mdi:sleep",
         options=SLEEP_TIMER_OPTIONS,
         value_fn=_sleep_option,
         setting="sleep_timer_minutes",
@@ -89,7 +84,6 @@ BASIC_SELECTS = (
     SettingSelectDescription(
         key="display_timeout",
         translation_key="display_timeout",
-        icon="mdi:monitor-shimmer",
         options=list(DISPLAY_OPTIONS),
         value_fn=lambda device: device.display_timeout,
         setting="display_timeout",
@@ -97,7 +91,6 @@ BASIC_SELECTS = (
     SettingSelectDescription(
         key="cooling_fan",
         translation_key="cooling_fan",
-        icon="mdi:fan",
         options=list(FAN_OPTIONS),
         value_fn=lambda device: device.cooling_fan,
         setting="cooling_fan",
@@ -105,7 +98,6 @@ BASIC_SELECTS = (
     SettingSelectDescription(
         key="input_voltage",
         translation_key="input_voltage",
-        icon="mdi:flash-triangle-outline",
         options=[f"{volts / 10:.1f}" for volts in range(100, 121)],
         value_fn=lambda device: (
             None if device.input_voltage is None else f"{device.input_voltage:.1f}"
@@ -143,7 +135,6 @@ class ExpectedChemistrySelect(SkyrcAlwaysAvailableEntity, SelectEntity, RestoreE
     """
 
     _attr_translation_key = "expected_chemistry"
-    _attr_icon = "mdi:flask-outline"
     _attr_options = MC5000_CHEMISTRY_OPTIONS
 
     def __init__(self, coordinator: SkyrcCoordinator, index: int) -> None:

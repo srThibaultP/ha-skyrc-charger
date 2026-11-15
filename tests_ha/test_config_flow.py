@@ -285,3 +285,46 @@ async def test_a_type_228_is_recognised_by_its_model_code(
 
     assert result["data"][CONF_MODEL] == "type228"
     assert result["title"] == "SkyRC NC3000 Octa"
+
+
+async def test_reconfigure_moves_the_entry_to_another_address(
+    hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
+) -> None:
+    config_entry = make_entry()
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    other = "AA:BB:CC:DD:EE:01"
+
+    with patch("homeassistant.components.bluetooth.async_discovered_service_info", return_value=[]):
+        result = await config_entry.start_reconfigure_flow(hass)
+        assert result["step_id"] == "reconfigure"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_ADDRESS: other}
+        )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert config_entry.data[CONF_ADDRESS] == other
+    assert config_entry.unique_id == f"mc5000-{other}"
+
+
+async def test_reconfigure_refuses_another_model(
+    hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
+) -> None:
+    config_entry = make_entry()
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    client.model_code = "100209"  # an NC3000 answers at the new address
+
+    with patch("homeassistant.components.bluetooth.async_discovered_service_info", return_value=[]):
+        result = await config_entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_ADDRESS: "AA:BB:CC:DD:EE:01"}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "wrong_model"}
+    assert config_entry.data[CONF_ADDRESS] == ADDRESS

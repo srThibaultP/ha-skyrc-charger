@@ -356,9 +356,7 @@ class Mc3000Client(Mc5000Client):
             default_discharge = int(ENELOOP_DISCHARGE_A[eneloop_type] * 1000)
         if break_in:
             # The app computes the break-in currents from the capacity.
-            if capacity == 0:
-                default_charge = default_discharge = 10
-            elif capacity <= 10000:
+            if capacity <= 10000:
                 default_charge, default_discharge = capacity // 10, capacity // 5
             else:
                 default_charge = min(capacity // 10, 3000)

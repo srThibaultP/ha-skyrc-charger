@@ -206,6 +206,21 @@ version.
 - Full MC5000 profile editing (delta-peak, trickle, keep-voltage, …) is not
   exposed; those use defaults baked into the driver.
 
+## Troubleshooting
+
+- **Cannot connect**: the charger accepts one Bluetooth link at a time. Close the SkyRC app,
+  check that it is on and within reach of an adapter or a Bluetooth proxy.
+- **The passcode is refused**: enter the one shown on the charger's screen (the factory ones are
+  `1234` on the MC5000, `5793` on the older chargers); Home Assistant asks again by itself.
+- **The charger changed its address** (a new adapter, a replaced charger of the same model):
+  use *Reconfigure* on the entry.
+- **A slot shows an error**: the error sensor has a `description` attribute with its usual cause.
+
+## Removing the integration
+
+Delete the entry in *Settings > Devices & services*; its device and entities go with it. To
+remove the code too, uninstall it from the Marketplace and restart Home Assistant.
+
 ## Tests
 
 The unit tests stub out Home Assistant, so they need nothing installed:
@@ -213,6 +228,9 @@ The unit tests stub out Home Assistant, so they need nothing installed:
 ```bash
 cd tests && python3 -m unittest discover
 ```
+
+The integration tests run inside a real Home Assistant (`pytest tests_ha`). Both suites together
+cover about 97 % of the integration; the CI fails below 95 %.
 
 ## Safety
 
