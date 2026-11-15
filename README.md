@@ -17,7 +17,8 @@ regardless of which charger you own.
 - MC5000 BLE protocol: implemented in pure Python. It started from the
   reverse engineering documented in [rssdev10/skyrc-mc-rs](https://github.com/rssdev10/skyrc-mc-rs)
   (`docs/PROTOCOL.md`) and now follows what the official SkyRC app (2.94)
-  sends and reads, checked against a charger on firmware 1.83.
+  sends and reads. Status, settings, start and stop were checked against a
+  charger on firmware 1.83 with a NiMH cell.
 
 ## Installation
 
@@ -182,9 +183,6 @@ version.
   without a start** yet. The app reads the voltage history with command
   0x98; the charger did not answer it with empty slots, so it is not wired
   in.
-- **MC5000 start and stop follow the app but still need a run with cells
-  in**: the status, settings and device info were checked against a real
-  charger, starting and stopping were not.
 - The MC5000 driver is **not officially supported by SkyRC**; it's a
   community reverse-engineering effort. Test carefully, keep an eye on
   your charger the first few times, and don't leave it unattended with
