@@ -19,6 +19,7 @@ DEFAULT_NAME = "SkyRC Charger"
 MODEL_BD380 = "bd380"
 MODEL_MC5000 = "mc5000"
 MODEL_NC2200 = "nc2200"
+MODEL_PSU650 = "psu650"
 MODEL_NC3000 = "nc3000"
 MODEL_TYPE228 = "type228"
 
@@ -59,6 +60,7 @@ MODELS = {
     MODEL_BD380: "SkyRC BD380 (discharger)",
     MODEL_MC5000: "SkyRC MC5000 (4 slots)",
     MODEL_NC2200: "SkyRC NC2200 (4 slots)",
+    MODEL_PSU650: "SkyRC PSU650 (power supply)",
     MODEL_NC3000: "SkyRC NC3000 (4 slots)",
     MODEL_TYPE228: "SkyRC NC3000 Octa (8 slots)",
 }
@@ -69,6 +71,7 @@ MODEL_BY_CODE = {
     "600153": MODEL_BD380,
     "100214": MODEL_MC5000,
     "100181": MODEL_NC2200,
+    "200031": MODEL_PSU650,
     "100209": MODEL_NC3000,
     "100228": MODEL_TYPE228,
 }
@@ -80,6 +83,7 @@ MODEL_NAMES = {
     MODEL_BD380: "SkyRC BD380",
     MODEL_MC5000: "SkyRC MC5000",
     MODEL_NC2200: "SkyRC NC2200",
+    MODEL_PSU650: "SkyRC PSU650",
     MODEL_NC3000: "SkyRC NC3000",
     MODEL_TYPE228: "SkyRC NC3000 Octa",
 }
@@ -89,6 +93,7 @@ CHANNELS_BY_MODEL = {
     MODEL_BD380: 1,
     MODEL_MC5000: 4,
     MODEL_NC2200: 4,
+    MODEL_PSU650: 4,
     MODEL_NC3000: 4,
     MODEL_TYPE228: 8,
 }
@@ -96,6 +101,9 @@ CHANNELS_BY_MODEL = {
 # Models whose slots can be started from Home Assistant, and which report
 # error codes and a chemistry. The others are monitored and stopped only.
 MODELS_WITH_START = {MODEL_MC5000}
+
+# Models with a stop command (a power supply has nothing to stop).
+MODELS_WITHOUT_STOP = {MODEL_PSU650}
 
 # Models that can give a slot's logged voltage curve.
 MODELS_WITH_CURVE = {MODEL_MC5000, MODEL_NC3000, MODEL_TYPE228}
@@ -106,7 +114,10 @@ MAX_CHANNELS = max(CHANNELS_BY_MODEL.values())
 # matched case-insensitively as a substring. Keep them reasonably specific:
 # they are only used to *suggest* devices in the config flow, never to
 # silently connect to whatever happens to be nearby.
-MC5000_BLE_NAME_PATTERNS = ("mc5000", "skyrc", "#charger", "telinkse", "charger")
+MC5000_BLE_NAME_PATTERNS = ("mc5000", "skyrc", "#charger", "telinkse", "charger", "psu650")
+
+# The app tells the PSU650 by its Bluetooth name, not by a model code.
+PSU650_NAME_FRAGMENT = "PSU650"
 
 # The charger speaks over a TelinkSE-style serial service.
 BLE_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb"
@@ -141,6 +152,6 @@ MODE_OPTIONS = sorted(MC5000_MODE_OPTIONS)
 
 def default_passcode(model: str) -> str:
     """The factory passcode of a model, which the app tries first."""
-    if model in LEGACY_BY_KEY or model == MODEL_BD380:
+    if model in LEGACY_BY_KEY or model in (MODEL_BD380, MODEL_PSU650):
         return DEFAULT_LEGACY_PASSWORD
     return DEFAULT_PASSCODE

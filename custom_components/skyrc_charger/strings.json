@@ -104,6 +104,15 @@
       },
       "energy": {
         "name": "Slot {slot} Energy"
+      },
+      "total_power": {
+        "name": "Total Power"
+      },
+      "total_current": {
+        "name": "Total Current"
+      },
+      "device_error": {
+        "name": "Error"
       }
     },
     "button": {

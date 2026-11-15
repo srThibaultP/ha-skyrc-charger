@@ -33,9 +33,13 @@ async def test_diagnostics_hide_the_address_and_the_passcode(
 
 
 def test_the_manifest_matches_the_charger_by_its_name() -> None:
-    (matcher,) = json.loads(MANIFEST.read_text())["bluetooth"]
-    domain_matcher = {"domain": "skyrc_charger", **matcher}
+    matchers = [
+        {"domain": "skyrc_charger", **m} for m in json.loads(MANIFEST.read_text())["bluetooth"]
+    ]
 
-    assert ble_device_matches(domain_matcher, _service_info())
-    assert ble_device_matches(domain_matcher, _service_info(name="#Charger-0001"))
-    assert not ble_device_matches(domain_matcher, _service_info(name="SomethingElse"))
+    def matches(name: str) -> bool:
+        return any(ble_device_matches(m, _service_info(name=name)) for m in matchers)
+
+    assert matches("#Charger-0001")
+    assert matches("PSU650-1A2B")
+    assert not matches("SomethingElse")

@@ -30,9 +30,11 @@ from .const import (
     MODEL_MC5000,
     MODEL_NC2200,
     MODEL_NC3000,
+    MODEL_PSU650,
     MODEL_TYPE228,
     MODELS_WITH_CURVE,
     MODELS_WITH_START,
+    MODELS_WITHOUT_STOP,
     OPTION_PASSCODE,
     default_passcode,
 )
@@ -41,6 +43,7 @@ from .mc5000_client import Mc5000Client
 from .models import ChargerClient, ChargerState
 from .nc2200_client import Nc2200Client
 from .nc3000_client import Nc3000Client
+from .psu650_client import Psu650Client
 from .type228_client import Type228Client
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,6 +55,7 @@ CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
     MODEL_MC5000: Mc5000Client,
     MODEL_NC2200: Nc2200Client,
     MODEL_NC3000: Nc3000Client,
+    MODEL_PSU650: Psu650Client,
     MODEL_TYPE228: Type228Client,
     **{key: make_legacy_client(key) for key in LEGACY_BY_KEY},
 }
@@ -125,6 +129,10 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
     @property
     def supports_start(self) -> bool:
         return self.model in MODELS_WITH_START
+
+    @property
+    def supports_stop(self) -> bool:
+        return self.model not in MODELS_WITHOUT_STOP
 
     @property
     def supports_curves(self) -> bool:
@@ -258,6 +266,10 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
             if 0 < slot <= len(channels) and channels[slot - 1].status in RUNNING_STATUSES
         ]
 
+    def _require_stop(self) -> None:
+        if not self.supports_stop:
+            raise HomeAssistantError(f"The {self.model.upper()} has nothing to stop")
+
     def _require_start(self) -> None:
         if not self.supports_start:
             raise HomeAssistantError(
@@ -305,10 +317,12 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
         await self.async_refresh()
 
     async def async_stop_slot(self, slot: int) -> None:
+        self._require_stop()
         await self._async_command(lambda client: client.stop_channel(slot - 1))
         await self.async_refresh()
 
     async def async_stop_all(self) -> None:
+        self._require_stop()
         await self._async_command(lambda client: client.stop_all())
         await self.async_refresh()
 
