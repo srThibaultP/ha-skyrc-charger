@@ -14,11 +14,11 @@ regardless of which charger you own.
   whose integration structure (config flow, coordinator, entities,
   voltage curves, program writing) this project was based on and
   keeps tracking.
-- MC5000 BLE protocol: implemented in pure Python. It started from the
-  reverse engineering documented in [rssdev10/skyrc-mc-rs](https://github.com/rssdev10/skyrc-mc-rs)
-  (`docs/PROTOCOL.md`) and now follows what the official SkyRC app (2.94)
-  sends and reads. Status, settings, start and stop were checked against a
-  charger on firmware 1.83 with a NiMH cell.
+- MC5000 BLE protocol: implemented in pure Python from what the official
+  SkyRC app (2.94) sends and reads: the commands, the status and program
+  layouts, and the voltage ranges and defaults it offers for each chemistry.
+  Status, settings, start and stop were checked against a charger on
+  firmware 1.83 with a NiMH cell.
 
 ## Installation
 
@@ -129,10 +129,13 @@ On the **MC5000** the select is used as the chemistry to write into the
 program instead: unlike the MC3000, the MC5000 BLE protocol has no "start
 the currently configured program" command — a full configuration packet must
 be sent before every start. `start_slot` and `start_all` therefore also take
-optional `chemistry`, `mode`, `current_ma` and `capacity_mah`. Sensible
-per-chemistry defaults are used for anything you don't specify (current
-defaults to 1000 mA, capacity to 3000 mAh, target/cutoff voltage from the
-chemistry's standard values).
+optional `chemistry`, `mode`, `current_ma` and `capacity_mah`. Anything you
+don't specify gets the value the SkyRC app proposes for that chemistry: for
+example 3000 mAh at 3000 mA for a lithium cell, 3000 mAh at 1000 mA for NiMH,
+4.20 V / 3.20 V / 3.80 V (target, cut-off, storage) for Li-ion and 1.65 V /
+0.90 V for NiMH, and a 60 °C temperature cut-off. The app also limits the
+voltages to a range per chemistry (for example 4.05 to 4.25 V for a Li-ion
+target); a value outside it is refused.
 
 There is no default chemistry: a start is refused until one is given, either
 in the call or through the select. The modes depend on it too, and a mode
@@ -189,8 +192,8 @@ version.
 
 - **No MC5000 program writing without a start**: on the MC5000, writing a
   program is what starts the slot.
-- The MC5000 driver is **not officially supported by SkyRC**; it's a
-  community reverse-engineering effort. Test carefully, keep an eye on
+- The MC5000 driver is **not made or endorsed by SkyRC**: it speaks the same
+  protocol as their app. Test carefully, keep an eye on
   your charger the first few times, and don't leave it unattended with
   unfamiliar chemistries/currents.
 - Full MC5000 profile editing (delta-peak, trickle, keep-voltage, …) is not
