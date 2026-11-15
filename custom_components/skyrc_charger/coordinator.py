@@ -145,6 +145,11 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
         return self.model in MODELS_WITH_CURVE
 
     @property
+    def has_basic_settings(self) -> bool:
+        """The MC3000's own settings (beep, display, fan, input voltage)."""
+        return self.model == MODEL_MC3000
+
+    @property
     def supports_settings(self) -> bool:
         return self.model in MODELS_WITH_SETTINGS
 

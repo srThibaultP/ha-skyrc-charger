@@ -11,9 +11,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import MC5000_CHEMISTRY_OPTIONS
+from .const import MC5000_CHEMISTRY_OPTIONS, MODELS_WITHOUT_CHEMISTRY
 from .coordinator import SkyrcConfigEntry, SkyrcCoordinator
 from .entity import SkyrcAlwaysAvailableEntity, SkyrcEntity
+from .mc3000_client import DISPLAY_OPTIONS, FAN_OPTIONS
 from .mc5000_client import SETTING_OPTIONS, SLEEP_TIMER_MINUTES
 from .models import DeviceData
 
@@ -84,6 +85,37 @@ SETTING_SELECTS = (
 )
 
 
+BASIC_SELECTS = (
+    SettingSelectDescription(
+        key="display_timeout",
+        translation_key="display_timeout",
+        icon="mdi:monitor-shimmer",
+        options=list(DISPLAY_OPTIONS),
+        value_fn=lambda device: device.display_timeout,
+        setting="display_timeout",
+    ),
+    SettingSelectDescription(
+        key="cooling_fan",
+        translation_key="cooling_fan",
+        icon="mdi:fan",
+        options=list(FAN_OPTIONS),
+        value_fn=lambda device: device.cooling_fan,
+        setting="cooling_fan",
+    ),
+    SettingSelectDescription(
+        key="input_voltage",
+        translation_key="input_voltage",
+        icon="mdi:flash-triangle-outline",
+        options=[f"{volts / 10:.1f}" for volts in range(100, 121)],
+        value_fn=lambda device: (
+            None if device.input_voltage is None else f"{device.input_voltage:.1f}"
+        ),
+        setting="input_voltage",
+        to_setting=float,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: SkyrcConfigEntry,
@@ -91,13 +123,15 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data
     entities: list[SelectEntity] = []
-    if coordinator.supports_start:
+    if coordinator.supports_start and coordinator.model not in MODELS_WITHOUT_CHEMISTRY:
         entities.extend(
             ExpectedChemistrySelect(coordinator, index)
             for index in range(coordinator.channel_count)
         )
     if coordinator.supports_settings:
         entities.extend(SettingSelect(coordinator, description) for description in SETTING_SELECTS)
+    if coordinator.has_basic_settings:
+        entities.extend(SettingSelect(coordinator, description) for description in BASIC_SELECTS)
     async_add_entities(entities)
 
 

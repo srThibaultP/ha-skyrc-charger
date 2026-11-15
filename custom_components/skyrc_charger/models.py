@@ -52,6 +52,12 @@ class DeviceData:
     backlight: str | None = None  # low / medium / high
     warning_tone: bool | None = None
     sleep_timer_minutes: int | None = None  # 0 = never
+    # MC3000-only settings.
+    beep: bool | None = None
+    display_timeout: str | None = None
+    screensaver: bool | None = None
+    cooling_fan: str | None = None
+    input_voltage: float | None = None  # volts
 
 
 @dataclass

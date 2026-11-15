@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+import unittest.mock
 
 import _harness
 from _harness import FakeBleakClient, load
@@ -1315,7 +1316,7 @@ class Mc3000Test(unittest.IsolatedAsyncioTestCase):
         # The Bluetooth address goes in, last byte first, from byte 3.
         self.assertEqual(asked[0], (0x57, b"\x00" + bytes.fromhex("FFEEDDCCBBAA")))
 
-    async def test_nothing_to_start_and_stop_names_the_slot_by_its_index(self) -> None:
+    async def test_stop_names_the_slot_by_its_bitmask(self) -> None:
         client = Mc3000Client(FakeDevice())
         sent: list[tuple[int, bytes]] = []
 
@@ -1325,9 +1326,7 @@ class Mc3000Test(unittest.IsolatedAsyncioTestCase):
         client._request = fake_request  # type: ignore[method-assign]
         await client.stop_channel(2)
 
-        self.assertEqual(sent, [(0xFE, bytes([2]))])
-        with self.assertRaises(ValueError):
-            await client.start_channel(0)
+        self.assertEqual(sent, [(0xFE, bytes([4]))])
 
 
 nc2600 = load("nc2600_client")
@@ -1377,6 +1376,178 @@ class Nc2600Test(unittest.IsolatedAsyncioTestCase):
     async def test_there_is_no_stop(self) -> None:
         with self.assertRaises(ValueError):
             await Nc2600Client(FakeDevice()).stop_channel(0)
+
+
+class Mc3000ProgramTest(unittest.IsolatedAsyncioTestCase):
+    def _program(self, channel: int = 0, **kwargs) -> bytes:
+        return Mc3000Client(FakeDevice())._build_program(channel, **kwargs)
+
+    def test_a_nimh_charge_with_the_apps_defaults(self) -> None:
+        p = self._program(1, chemistry="nimh")
+
+        self.assertEqual((p[0], p[1], p[2], p[3], p[4]), (0x0F, 0x11, 2, 3, 0))
+        self.assertEqual(int.from_bytes(p[5:7], "big"), 2000)  # capacity
+        self.assertEqual(int.from_bytes(p[7:9], "big"), 1000)  # charge current
+        self.assertEqual(int.from_bytes(p[9:11], "big"), 500)  # discharge current
+        self.assertEqual(int.from_bytes(p[11:13], "big"), 1650)  # charge end voltage
+        self.assertEqual(int.from_bytes(p[13:15], "big"), 1000)  # discharge end voltage
+        self.assertEqual((p[22], p[23]), (3, 10))  # delta peak, trickle / 10
+        self.assertEqual(p[26], 45)
+        self.assertEqual(p[39], sum(p[:39]) & 0xFF)
+
+    def test_a_lithium_cell_has_no_nickel_fields(self) -> None:
+        p = self._program(0, chemistry="liion", mode="storage")
+
+        self.assertEqual((p[3], p[4]), (0, 2))
+        self.assertEqual(int.from_bytes(p[11:13], "big"), 3800)  # storage voltage
+        self.assertEqual((p[22], p[23]), (0, 0))
+
+    def test_a_chemistry_is_required(self) -> None:
+        with self.assertRaises(ValueError):
+            self._program(0)
+
+    def test_the_app_ranges_are_enforced(self) -> None:
+        for kwargs in (
+            {"current": 4000},
+            {"target_mv": 5000},
+            {"mode": "break_in", "chemistry": "liion"},
+            {"cycle_count": 100},
+            {"trickle_ma": 15},
+        ):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                self._program(0, **{"chemistry": "nimh", **kwargs})
+
+    def test_a_break_in_derives_its_currents_from_the_capacity(self) -> None:
+        p = self._program(0, chemistry="nimh", mode="break_in", capacity=2000)
+
+        self.assertEqual(int.from_bytes(p[7:9], "big"), 200)
+        self.assertEqual(int.from_bytes(p[9:11], "big"), 400)
+
+    async def test_a_start_stops_writes_both_halves_then_starts(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        client._client = _harness_client()
+        client._connected = True
+        events: list[tuple] = []
+
+        async def fake_request(command, data=b"", timeout=0):
+            events.append(("request", command, data))
+
+        async def fake_write(frame):
+            events.append(("write", frame))
+            if len(events) == 3:
+                client._notify_queue.put_nowait(_frame_reply(0x11))
+
+        client._request = fake_request  # type: ignore[method-assign]
+        client._write_frame = fake_write  # type: ignore[method-assign]
+        with unittest.mock.patch("asyncio.sleep", new=_no_sleep):
+            await client.start_channel(2, chemistry="nimh")
+
+        self.assertEqual(events[0], ("request", 0xFE, bytes([4])))
+        self.assertEqual(events[1][0], "write")
+        self.assertEqual(len(events[1][1]), 20)
+        self.assertEqual(events[1][1][:3], bytes([0x0F, 0x11, 4]))
+        self.assertEqual(len(events[2][1]), 20)
+        self.assertEqual(events[3], ("request", 0x05, bytes([4])))
+
+    async def test_a_start_that_gets_no_answer_fails(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        client._client = _harness_client()
+        client._connected = True
+
+        async def fake_request(*_a, **_k):
+            return None
+
+        async def fake_write(_frame):
+            return None
+
+        async def instant_timeout(_awaitable, timeout):
+            _awaitable.close()
+            raise TimeoutError
+
+        client._request = fake_request  # type: ignore[method-assign]
+        client._write_frame = fake_write  # type: ignore[method-assign]
+        with (
+            unittest.mock.patch("asyncio.sleep", new=_no_sleep),
+            unittest.mock.patch("asyncio.wait_for", new=instant_timeout),
+            self.assertRaises(mc3000.BleakError),
+        ):
+            await client.start_channel(0, chemistry="nimh")
+
+    async def test_settings_are_written_and_read_back(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        info = client._device_info
+        info.beep, info.display_timeout, info.screensaver = True, "auto", False
+        info.cooling_fan, info.input_voltage = "auto", 11.0
+        sent: list[tuple[int, bytes]] = []
+
+        async def fake_request(command, data=b"", timeout=0):
+            sent.append((command, data))
+            if command == 0x61:
+                packet = bytearray(20)
+                packet[0], packet[1] = 0x0F, 0x61
+                packet[3:9] = bytes([0, 3, 0, 1, 11500 >> 8, 11500 & 255])
+                return bytes(packet)
+            return b"\x0f\x63\x01"
+
+        client._request = fake_request  # type: ignore[method-assign]
+        with unittest.mock.patch("asyncio.sleep", new=_no_sleep):
+            await client.async_set_settings(beep=False, display_timeout="3 min", input_voltage=11.5)
+
+        write = next(data for command, data in sent if command == 0x63)
+        # 0x63 data from byte 2: unit, beep, display, screensaver, fan, input (mV).
+        self.assertEqual((write[0], write[1], write[2], write[3], write[4]), (0, 0, 3, 0, 0))
+        self.assertEqual(int.from_bytes(write[5:7], "big"), 11500)
+
+    async def test_an_unknown_setting_is_refused(self) -> None:
+        client = Mc3000Client(FakeDevice())
+        with self.assertRaises(ValueError):
+            await client.async_set_settings(colour="blue")
+
+
+class Nc2600ProgramTest(unittest.TestCase):
+    def _program(self, **kwargs) -> bytes:
+        return Nc2600Client(FakeDevice())._build_program(2, **kwargs)
+
+    def test_a_charge(self) -> None:
+        p = self._program(current=800)
+
+        self.assertEqual((p[0], p[1]), (2, 0))
+        self.assertEqual(int.from_bytes(p[4:6], "big"), 800)
+        self.assertEqual(int.from_bytes(p[6:8], "big"), 0)
+
+    def test_a_cycle_carries_both_currents_and_the_count(self) -> None:
+        p = self._program(mode="cycle", current=500, discharge_current=300, cycle_count=3)
+
+        self.assertEqual(p[1], 4)
+        self.assertEqual(int.from_bytes(p[4:6], "big"), 500)
+        self.assertEqual(int.from_bytes(p[6:8], "big"), 300)
+        self.assertEqual(p[8], 3)
+
+    def test_a_break_in_carries_the_capacity_only(self) -> None:
+        p = self._program(mode="break_in", capacity=2400)
+
+        self.assertEqual(int.from_bytes(p[2:4], "big"), 2400)
+        self.assertEqual(p[4:8], bytes(4))
+
+    def test_the_discharge_limit_depends_on_the_variant(self) -> None:
+        client = Nc2600Client(FakeDevice())
+        with self.assertRaises(ValueError):
+            client._build_program(0, mode="discharge", discharge_current=1500)
+        client._device_info.model_code = "100145"
+        client._build_program(0, mode="discharge", discharge_current=1500)
+
+    def test_the_app_ranges_are_enforced(self) -> None:
+        for kwargs in ({"current": 100}, {"current": 3000}, {"mode": "cycle", "cycle_count": 13}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                self._program(**kwargs)
+
+
+def _frame_reply(command: int) -> bytes:
+    return bytes([0x0F, command] + [0] * 18)
+
+
+async def _no_sleep(_seconds):
+    return None
 
 
 def _harness_client():

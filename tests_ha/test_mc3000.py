@@ -41,7 +41,8 @@ async def test_it_reports_each_slot_with_its_battery_type(
     assert hass.states.get("sensor.skyrc_mc3000_slot_4_status").state == "standby"
     assert hass.states.get("sensor.skyrc_mc3000_slot_1_voltage_curve_points") is not None
     assert hass.states.get("button.skyrc_mc3000_slot_1_stop") is not None
-    assert hass.states.get("button.skyrc_mc3000_slot_1_start") is None
+    assert hass.states.get("button.skyrc_mc3000_slot_1_start") is not None
+    assert hass.states.get("select.skyrc_mc3000_slot_1_expected_chemistry") is not None
     assert hass.states.get("select.skyrc_mc3000_beep_volume") is None
 
 
@@ -65,3 +66,34 @@ async def test_it_is_set_up_when_its_info_answer_is_the_only_clue(
 
     assert result["data"]["model"] == "mc3000"
     assert result["title"] == "SkyRC MC3000"
+
+
+async def test_its_settings_are_written_to_the_charger(
+    hass: HomeAssistant, client: FakeClient, ble_device: BLEDevice
+) -> None:
+    client.device.beep = True
+    client.device.display_timeout = "auto"
+    client.device.screensaver = False
+    client.device.cooling_fan = "auto"
+    client.device.input_voltage = 11.0
+    entry = make_entry(model="mc3000")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("switch.skyrc_mc3000_keypress_beep").state == "on"
+    assert hass.states.get("select.skyrc_mc3000_display_timeout").state == "auto"
+    assert hass.states.get("select.skyrc_mc3000_input_voltage_limit").state == "11.0"
+
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": "select.skyrc_mc3000_input_voltage_limit", "option": "11.5"},
+        blocking=True,
+    )
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.skyrc_mc3000_keypress_beep"}, blocking=True
+    )
+
+    assert ("set_settings", {"input_voltage": 11.5}) in client.calls
+    assert ("set_settings", {"beep": False}) in client.calls

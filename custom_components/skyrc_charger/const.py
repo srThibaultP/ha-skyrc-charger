@@ -108,7 +108,10 @@ CHANNELS_BY_MODEL = {
 
 # Models whose slots can be started from Home Assistant, and which report
 # error codes and a chemistry. The others are monitored and stopped only.
-MODELS_WITH_START = {MODEL_MC5000}
+MODELS_WITH_START = {MODEL_MC3000, MODEL_MC5000, MODEL_NC2600}
+
+# Starting a slot of these does not depend on what cell is in it.
+MODELS_WITHOUT_CHEMISTRY = {MODEL_NC2600}
 
 # Models without a stop command: a power supply has nothing to stop, and
 # the NC2600 app stops a slot by sending a program, which is not offered.
@@ -154,6 +157,7 @@ MC5000_CHEMISTRY_OPTIONS = [
 ]
 
 CHEMISTRY_OPTIONS_BY_MODEL = {
+    MODEL_MC3000: MC5000_CHEMISTRY_OPTIONS,
     MODEL_MC5000: MC5000_CHEMISTRY_OPTIONS,
 }
 
