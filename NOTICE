@@ -14,3 +14,9 @@ under the MIT license.
 
 The skyrc-ble library is a separate dependency under the MIT license. See
 https://github.com/srThibaultP/skyrc-ble.
+
+The icon and logo (icon.png and custom_components/skyrc_charger/brand/) are
+the SkyRC app icon, taken from the official SkyRC app. The SkyRC name and
+logo are trademarks of SkyRC Technology Co., Ltd.; LICENSE does not cover
+them, and they are used here only to identify the chargers this
+integration works with.

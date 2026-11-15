@@ -172,8 +172,10 @@ current.
 
 ## Icon / logo
 
-The icon and logo ship in `custom_components/skyrc_charger/brand/`, which
-Home Assistant 2026.3 and later read directly. Older versions show the
+The icon and logo are the SkyRC app icon, a trademark of SkyRC used only to
+identify the chargers (see `NOTICE`). They ship in
+`custom_components/skyrc_charger/brand/`, which Home Assistant 2026.3 and
+later read directly. Older versions show the
 generic puzzle-piece icon. Entity icons (buttons, sensors, etc.) work on any
 version.
 
