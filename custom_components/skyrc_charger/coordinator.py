@@ -26,12 +26,15 @@ from .const import (
     DEFAULT_PASSCODE,
     DOMAIN,
     MODEL_MC5000,
+    MODEL_NC2200,
     MODEL_NC3000,
+    MODELS_WITH_CURVE,
     MODELS_WITH_START,
     OPTION_PASSCODE,
 )
 from .mc5000_client import Mc5000Client
 from .models import ChargerClient, ChargerState
+from .nc2200_client import Nc2200Client
 from .nc3000_client import Nc3000Client
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,6 +43,7 @@ type SkyrcConfigEntry = ConfigEntry[SkyrcCoordinator]
 
 CLIENTS: dict[str, Callable[[Any], ChargerClient]] = {
     MODEL_MC5000: Mc5000Client,
+    MODEL_NC2200: Nc2200Client,
     MODEL_NC3000: Nc3000Client,
 }
 
@@ -112,6 +116,10 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
     @property
     def supports_start(self) -> bool:
         return self.model in MODELS_WITH_START
+
+    @property
+    def supports_curves(self) -> bool:
+        return self.model in MODELS_WITH_CURVE
 
     @property
     def supports_settings(self) -> bool:
@@ -304,6 +312,8 @@ class SkyrcCoordinator(DataUpdateCoordinator[ChargerState]):
     # ------------------------------------------------------------------
 
     async def async_fetch_curve(self, slot: int) -> CurveData:
+        if not self.supports_curves:
+            raise HomeAssistantError(f"The {self.model.upper()} does not give a voltage curve")
         curve = await self._async_command(lambda client: client.async_get_voltage_curve(slot - 1))
         return self._store_curve(slot - 1, curve)
 

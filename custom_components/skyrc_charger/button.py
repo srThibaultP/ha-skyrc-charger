@@ -88,7 +88,8 @@ async def async_setup_entry(
         entities.extend(
             SlotButton(coordinator, slot, description)
             for description in SLOT_BUTTONS
-            if coordinator.supports_start or description.key != "start"
+            if (coordinator.supports_start or description.key != "start")
+            and (coordinator.supports_curves or description.key != "fetch_voltage_curve")
         )
     async_add_entities(entities)
 
