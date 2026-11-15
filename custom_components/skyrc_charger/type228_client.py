@@ -37,7 +37,7 @@ class Type228Client(Mc5000Client):
     """The eight-slot type 228: read, stop, curve and settings; no start yet."""
 
     channel_count = SLOT_COUNT
-    MODEL_NAME = "Type 228"
+    MODEL_NAME = "NC3000 Octa"
     MODEL_CODE = TYPE228_MODEL_CODE
 
     def _port_byte(self, channel: int) -> int:

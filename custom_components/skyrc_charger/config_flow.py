@@ -25,13 +25,14 @@ from .const import (
     CONF_ADDRESS,
     CONF_MODEL,
     CONF_NAME,
-    DEFAULT_PASSCODE,
     DOMAIN,
     MC5000_BLE_NAME_PATTERNS,
     MODEL_BY_CODE,
     MODEL_NAMES,
     OPTION_PASSCODE,
+    default_passcode,
 )
+from .coordinator import CLIENTS
 from .mc5000_client import Mc5000Client
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,34 +54,52 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
 
     # -- helpers ---------------------------------------------------------
 
-    async def _async_check(self, address: str, passcode: str) -> tuple[str | None, str | None]:
-        """Try the charger; return (error key, model), the model when it answers."""
-        if not _passcode_ok(passcode):
-            return "invalid_passcode_format", None
+    async def _async_check(self, address: str, passcode: str) -> tuple[str | None, str | None, str]:
+        """Try the charger: (error key, model, passcode used).
+
+        The charger is first asked which model it is, then connected with the
+        driver of that model, which is the one that knows how to use the
+        passcode. A blank passcode means the factory one of the model.
+        """
+        if passcode and not _passcode_ok(passcode):
+            return "invalid_passcode_format", None, passcode
 
         device = bluetooth.async_ble_device_from_address(self.hass, address, connectable=True)
         if device is None:
-            return "cannot_connect", None
+            return "cannot_connect", None, passcode
 
-        client = Mc5000Client(device)
+        probe = Mc5000Client(device)
+        try:
+            await probe.connect(probe=True)
+            code = probe.model_code
+            await probe.disconnect()
+        except (BleakError, TimeoutError, OSError) as err:
+            _LOGGER.debug("Could not connect to %s: %r", address, err)
+            return "cannot_connect", None, passcode
+
+        model = MODEL_BY_CODE.get(code or "")
+        if model is None:
+            _LOGGER.warning("Unsupported SkyRC model code %r at %s", code, address)
+            return "unsupported_model", None, passcode
+
+        passcode = passcode or default_passcode(model)
+        if not _passcode_ok(passcode):
+            return "invalid_passcode_format", None, passcode
+
+        client = CLIENTS[model](device)
         client.set_passcode(passcode)
         try:
             await client.connect()
         except (BleakError, TimeoutError, OSError) as err:
             _LOGGER.debug("Could not connect to %s: %r", address, err)
-            return "cannot_connect", None
+            return "cannot_connect", None, passcode
 
         unlocked = client.unlocked
-        code = client.model_code
         await client.disconnect()
 
         if unlocked is False:
-            return "invalid_auth", None
-        model = MODEL_BY_CODE.get(code or "")
-        if model is None:
-            _LOGGER.warning("Unsupported SkyRC model code %r at %s", code, address)
-            return "unsupported_model", None
-        return None, model
+            return "invalid_auth", None, passcode
+        return None, model, passcode
 
     def _nearby(self) -> dict[str, str]:
         """The chargers Home Assistant's Bluetooth can connect to."""
@@ -130,7 +149,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             passcode = str(user_input[OPTION_PASSCODE]).strip()
             address = self._discovery.address.upper()
-            error, model = await self._async_check(address, passcode)
+            error, model, passcode = await self._async_check(address, passcode)
             if error is None and model is not None:
                 await self._async_claim(address, model)
                 return self._create(address, model, MODEL_NAMES[model], passcode)
@@ -138,7 +157,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="confirm",
-            data_schema=vol.Schema({vol.Required(OPTION_PASSCODE, default=DEFAULT_PASSCODE): str}),
+            data_schema=vol.Schema({vol.Optional(OPTION_PASSCODE, default=""): str}),
             description_placeholders={"name": self._discovery.name},
             errors=errors,
         )
@@ -152,7 +171,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
             address = str(user_input[CONF_ADDRESS]).strip().upper()
             passcode = str(user_input[OPTION_PASSCODE]).strip()
             self._abort_if_address_configured(address)
-            error, model = await self._async_check(address, passcode)
+            error, model, passcode = await self._async_check(address, passcode)
             if error is None and model is not None:
                 await self._async_claim(address, model)
                 name = str(user_input.get(CONF_NAME) or MODEL_NAMES[model]).strip()
@@ -166,7 +185,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(CONF_ADDRESS): address_field,
                     vol.Optional(CONF_NAME): str,
-                    vol.Required(OPTION_PASSCODE, default=DEFAULT_PASSCODE): str,
+                    vol.Optional(OPTION_PASSCODE, default=""): str,
                 }
             ),
             errors=errors,
@@ -184,7 +203,7 @@ class SkyrcConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             passcode = str(user_input[OPTION_PASSCODE]).strip()
-            error, _model = await self._async_check(entry.data[CONF_ADDRESS], passcode)
+            error, _model, passcode = await self._async_check(entry.data[CONF_ADDRESS], passcode)
             if error is None:
                 return self.async_update_reload_and_abort(
                     entry, options={**entry.options, OPTION_PASSCODE: passcode}
@@ -209,7 +228,9 @@ class SkyrcOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-        current = self.config_entry.options.get(OPTION_PASSCODE, DEFAULT_PASSCODE)
+        current = self.config_entry.options.get(
+            OPTION_PASSCODE, default_passcode(self.config_entry.data.get(CONF_MODEL, ""))
+        )
 
         if user_input is not None:
             passcode = str(user_input[OPTION_PASSCODE]).strip()

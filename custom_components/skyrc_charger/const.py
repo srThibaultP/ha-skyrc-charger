@@ -1,5 +1,7 @@
 """Constants for the SkyRC Charger (MC5000) integration."""
 
+from dataclasses import dataclass
+
 DOMAIN = "skyrc_charger"
 
 CONF_ADDRESS = "address"
@@ -9,6 +11,8 @@ CONF_MODEL = "model"
 # The MC5000 expects the passcode shown on its screen, as the app sends it.
 OPTION_PASSCODE = "passcode"
 DEFAULT_PASSCODE = "1234"
+# The password the app tries first on the older chargers.
+DEFAULT_LEGACY_PASSWORD = "5793"
 
 DEFAULT_NAME = "SkyRC Charger"
 
@@ -17,16 +21,49 @@ MODEL_NC2200 = "nc2200"
 MODEL_NC3000 = "nc3000"
 MODEL_TYPE228 = "type228"
 
+
+@dataclass(frozen=True, slots=True)
+class LegacyModel:
+    """One model of the list the SkyRC app downloads."""
+
+    key: str
+    name: str
+    code: str  # the model code the charger answers to the info request
+    channels: int
+    password: bool  # the charger asks for its password
+
+
+LEGACY_MODELS: tuple[LegacyModel, ...] = (
+    LegacyModel("q200", "Q200", "100104", 4, True),
+    LegacyModel("q200v2", "Q200V2", "100158", 4, True),
+    LegacyModel("q200neo", "Q200 neo", "100197", 4, True),
+    LegacyModel("q500neo", "Q500 neo", "100232", 4, True),
+    LegacyModel("d100", "D100", "100131", 2, True),
+    LegacyModel("d200s", "D200s", "100146", 2, True),
+    LegacyModel("d200nex", "D200 Nex", "100196", 2, True),
+    LegacyModel("d200neo_metal", "D200 neo (metal)", "100203", 2, False),
+    LegacyModel("d260", "D260", "100175", 2, True),
+    LegacyModel("d750", "D750 Ultra", "100201", 2, True),
+    LegacyModel("d8neo", "D8neo", "100230", 2, True),
+    LegacyModel("b6nano", "B6nano", "100134", 1, True),
+    LegacyModel("b6evo", "B6evo", "100168", 1, False),
+    LegacyModel("b6nax", "B6 nax", "100174", 1, True),
+)
+LEGACY_BY_KEY = {model.key: model for model in LEGACY_MODELS}
+
+
 # Labels for the model picker in the config flow.
 MODELS = {
+    **{model.key: f"SkyRC {model.name} ({model.channels} channels)" for model in LEGACY_MODELS},
     MODEL_MC5000: "SkyRC MC5000 (4 slots)",
     MODEL_NC2200: "SkyRC NC2200 (4 slots)",
     MODEL_NC3000: "SkyRC NC3000 (4 slots)",
-    MODEL_TYPE228: "SkyRC type 228 (8 slots)",
+    MODEL_TYPE228: "SkyRC NC3000 Octa (8 slots)",
 }
 
 # What the charger answers to the info request, as the app tells them apart.
 MODEL_BY_CODE = {
+    **{model.code: model.key for model in LEGACY_MODELS},
     "100214": MODEL_MC5000,
     "100181": MODEL_NC2200,
     "100209": MODEL_NC3000,
@@ -36,13 +73,15 @@ MODEL_BY_CODE = {
 # Default title of a config entry, which is also the device name entity ids
 # are built from - so keep it short and free of parentheses.
 MODEL_NAMES = {
+    **{model.key: f"SkyRC {model.name}" for model in LEGACY_MODELS},
     MODEL_MC5000: "SkyRC MC5000",
     MODEL_NC2200: "SkyRC NC2200",
     MODEL_NC3000: "SkyRC NC3000",
-    MODEL_TYPE228: "SkyRC type 228",
+    MODEL_TYPE228: "SkyRC NC3000 Octa",
 }
 
 CHANNELS_BY_MODEL = {
+    **{model.key: model.channels for model in LEGACY_MODELS},
     MODEL_MC5000: 4,
     MODEL_NC2200: 4,
     MODEL_NC3000: 4,
@@ -93,3 +132,8 @@ CHEMISTRY_OPTIONS = sorted(MC5000_CHEMISTRY_OPTIONS)
 MC5000_MODE_OPTIONS = ["charge", "storage", "discharge", "cycle", "refresh", "break_in"]
 
 MODE_OPTIONS = sorted(MC5000_MODE_OPTIONS)
+
+
+def default_passcode(model: str) -> str:
+    """The factory passcode of a model, which the app tries first."""
+    return DEFAULT_LEGACY_PASSWORD if model in LEGACY_BY_KEY else DEFAULT_PASSCODE
