@@ -296,7 +296,10 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
         kwargs = _start_kwargs(call, expected)
         _LOGGER.info("SkyRC %s: starting slot %s with %s", coordinator.model, slot, kwargs)
-        await charger.start_channel(slot - 1, **kwargs)
+        try:
+            await charger.start_channel(slot - 1, **kwargs)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
         await coordinator.async_request_refresh()
 
     async def async_handle_stop_slot(call: ServiceCall) -> None:
@@ -327,7 +330,10 @@ def _async_register_services(hass: HomeAssistant) -> None:
         _LOGGER.info(
             "SkyRC %s: starting all slots with %s", coordinator.model, per_channel or "defaults"
         )
-        await charger.start_all(per_channel=per_channel)
+        try:
+            await charger.start_all(per_channel=per_channel)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
         await coordinator.async_request_refresh()
 
     async def async_handle_stop_all(call: ServiceCall) -> None:

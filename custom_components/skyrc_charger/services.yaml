@@ -52,6 +52,10 @@ start_slot:
             - naion
     mode: &mode
       name: Mode (MC5000 only)
+      description: >
+        Lithium cells take charge, storage, discharge or cycle; nickel cells
+        charge, refresh, break_in, discharge or cycle; NiZn and RAM cells
+        charge, discharge or cycle.
       required: false
       selector:
         select:
@@ -82,8 +86,7 @@ start_slot:
 stop_slot:
   name: Stop slot
   description: >
-    Stop one slot. Note: on the MC5000 this currently stops all slots,
-    since per-slot stop is not reliably documented in the BLE protocol.
+    Stop one slot.
   fields:
     entry_id: *entry_id
     slot: *slot

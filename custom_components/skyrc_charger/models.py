@@ -26,6 +26,7 @@ class ChannelData:
     time: int | None = None  # seconds elapsed
     cycle_count: int | None = None
     led: str | None = None
+    error: str | None = None  # MC5000 fault reported for the slot, if any
 
 
 @dataclass
@@ -45,6 +46,13 @@ class DeviceData:
     cooling_fan_mode: str | None = None
     system_beep: bool | None = None
     screensaver: bool | None = None
+    # MC5000-only settings.
+    beep_volume: str | None = None  # off / low / medium / high
+    notification_volume: str | None = None
+    end_notification: str | None = None  # once / repeat
+    backlight: str | None = None  # low / medium / high
+    warning_tone: bool | None = None
+    sleep_timer_minutes: int | None = None  # 0 = never
 
 
 @dataclass

@@ -7,7 +7,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.const import UnitOfElectricCurrent, UnitOfElectricPotential, UnitOfTemperature
 from homeassistant.helpers.entity import EntityCategory
 
-from .const import DOMAIN
+from .const import DOMAIN, MODEL_MC5000
 from .entity import SkyrcEntity
 
 
@@ -21,6 +21,8 @@ class SkyrcSensorDescription:
     icon: str | None = None
     entity_category: EntityCategory | None = None
     value_fn: Callable[[Any], Any] = lambda _: None
+    # Models the sensor exists on; None means every model.
+    models: tuple[str, ...] | None = None
 
 
 def _format_seconds(value: Any) -> str | None:
@@ -88,6 +90,11 @@ CHANNEL_SENSORS: tuple[SkyrcSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda ch: ch.cycle_count,
     ),
+    SkyrcSensorDescription(
+        "error", "Error", icon="mdi:alert-circle-outline",
+        value_fn=lambda ch: ch.error or "none",
+        models=(MODEL_MC5000,),
+    ),
 )
 
 DEVICE_SENSORS: tuple[SkyrcSensorDescription, ...] = (
@@ -123,7 +130,48 @@ DEVICE_SENSORS: tuple[SkyrcSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda dev: dev.screensaver,
     ),
+    SkyrcSensorDescription(
+        "beep_volume", "Beep Volume", icon="mdi:volume-high",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda dev: dev.beep_volume,
+        models=(MODEL_MC5000,),
+    ),
+    SkyrcSensorDescription(
+        "notification_volume", "Notification Volume", icon="mdi:bell-ring-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda dev: dev.notification_volume,
+        models=(MODEL_MC5000,),
+    ),
+    SkyrcSensorDescription(
+        "end_notification", "End Notification", icon="mdi:bell-check-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda dev: dev.end_notification,
+        models=(MODEL_MC5000,),
+    ),
+    SkyrcSensorDescription(
+        "backlight", "Backlight", icon="mdi:brightness-6",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda dev: dev.backlight,
+        models=(MODEL_MC5000,),
+    ),
+    SkyrcSensorDescription(
+        "warning_tone", "Warning Tone", icon="mdi:alert-octagon-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda dev: dev.warning_tone,
+        models=(MODEL_MC5000,),
+    ),
+    SkyrcSensorDescription(
+        "sleep_timer", "Sleep Timer",
+        native_unit_of_measurement="min", icon="mdi:sleep",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda dev: dev.sleep_timer_minutes,
+        models=(MODEL_MC5000,),
+    ),
 )
+
+
+def _for_model(descriptions, model: str):
+    return [d for d in descriptions if d.models is None or model in d.models]
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -131,13 +179,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     entities: list[SensorEntity] = [
         SkyrcDeviceSensor(coordinator, entry.entry_id, description)
-        for description in DEVICE_SENSORS
+        for description in _for_model(DEVICE_SENSORS, coordinator.model)
     ]
 
     for slot_index in range(coordinator.channel_count):
         entities.extend(
             SkyrcChannelSensor(coordinator, entry.entry_id, slot_index, description)
-            for description in CHANNEL_SENSORS
+            for description in _for_model(CHANNEL_SENSORS, coordinator.model)
         )
         if coordinator.supports_voltage_curves:
             entities.append(SkyrcVoltageCurveSensor(coordinator, entry.entry_id, slot_index))

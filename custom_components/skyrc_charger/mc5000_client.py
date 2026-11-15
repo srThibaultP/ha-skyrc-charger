@@ -1,10 +1,24 @@
-"""MC5000 driver - native Python re-implementation of the BLE protocol.
+"""MC5000 driver - native Python implementation of the BLE protocol.
 
-Reverse-engineered protocol reference:
-https://github.com/rssdev10/skyrc-mc-rs/blob/main/docs/PROTOCOL.md
+The wire format follows the official SkyRC app (2.94), which drives the
+MC5000 with the same command set as the NC3000:
 
-Packet format: 0x0F | length | command | data... | checksum
-checksum = sum(command..data) mod 256
+    0x0F | length | command | data... | checksum
+    checksum = sum(command..data) mod 256, length = len(data) + 2
+
+Commands used here:
+
+    0x57  device info (model code, firmware/hardware version)
+    0x74  verify password (default "0000")
+    0x65  firmware update check (sent with "no update" by the app)
+    0x91  slot status, one slot per request (slot bitmask)
+    0x94  write a slot program; the charger starts it right away
+    0x96  read the system settings (beeps, backlight, sleep timer)
+    0xFE  stop the slots in the given bitmask
+
+An earlier community write-up treated 0x93 as start/stop. In the app 0x93
+only reads back a slot's settings, and nothing ever sends it to start or
+stop, so this driver no longer does either.
 """
 
 from __future__ import annotations
@@ -29,16 +43,22 @@ CHAR_UUID = BLE_CHAR_UUID
 START_BYTE = 0x0F
 
 CMD_GREETING = 0x06
-CMD_HANDSHAKE = 0x57
-CMD_VERSION = 0x74
-CMD_SETTINGS = 0x65
-CMD_SLOT_QUERY = 0xFE
+CMD_FIRMWARE_CHECK = 0x65
+CMD_INFO = 0x57
+CMD_VERIFY_PASSWORD = 0x74
 CMD_STATUS = 0x91
-CMD_START_STOP = 0x93
+CMD_QUERY_SLOT_SETTINGS = 0x93
 CMD_CONFIG = 0x94
+CMD_QUERY_SYSTEM = 0x96
+CMD_STOP = 0xFE
+
+# Model code the app matches the 0x57 answer against ("100214" in ASCII).
+MC5000_MODEL_CODE = b"100214"
 
 NOTIFY_TIMEOUT = 5.0
+INFO_TIMEOUT = 2.0
 
+# Chemistry byte, identical in the 0x94 program and the 0x91 status.
 CHEMISTRY_TO_BYTE = {
     "liion": 0x00,
     "liion_hv": 0x01,
@@ -53,15 +73,24 @@ CHEMISTRY_TO_BYTE = {
 }
 BYTE_TO_CHEMISTRY = {v: k for k, v in CHEMISTRY_TO_BYTE.items()}
 
-# The byte at offset 19 of the 0x91 status response encodes chemistry
-# using a DIFFERENT, much less certain scheme than the 0x94 config command
-# above (which is fully confirmed). The protocol doc flags this field as
-# "observed, unconfirmed" with only two known values. We deliberately keep
-# this separate so a status-response chemistry byte never gets silently
-# reinterpreted using the (different) config byte values.
-STATUS_CHEM_BYTE_TO_NAME = {
-    0x00: "liion",
-    0x02: "nimh",
+# The mode byte means something different for each chemistry family: 0x02
+# is "discharge" for a lithium cell but "break-in" for a NiMH one. Sending
+# the lithium numbering to a nickel cell starts the wrong program.
+LITHIUM_MODES = {"charge": 0, "storage": 1, "discharge": 2, "cycle": 3}
+NICKEL_MODES = {"charge": 0, "refresh": 1, "break_in": 2, "discharge": 3, "cycle": 4}
+ZINC_MODES = {"charge": 0, "discharge": 1, "cycle": 2}
+
+MODES_BY_CHEMISTRY = {
+    "liion": LITHIUM_MODES,
+    "liion_hv": LITHIUM_MODES,
+    "lifepo4": LITHIUM_MODES,
+    "lto": LITHIUM_MODES,
+    "naion": LITHIUM_MODES,
+    "nimh": NICKEL_MODES,
+    "nicd": NICKEL_MODES,
+    "eneloop": NICKEL_MODES,
+    "nizn": ZINC_MODES,
+    "ram": ZINC_MODES,
 }
 
 # target / cutoff voltage (mV) per chemistry, used to build a sane default
@@ -83,28 +112,63 @@ DEFAULT_SECONDARY_MV = {
     "liion": 3800, "liion_hv": 3900, "lifepo4": 3300, "lto": 2400, "naion": 3500,
 }
 
-MODE_TO_BYTE = {
-    "charge": 0x00,
-    "storage": 0x01,
-    "discharge": 0x02,
-    "cycle": 0x03,
-    "refresh": 0x04,
-    "break_in": 0x05,
-}
-
+# Byte 18 of the 0x91 answer, as the app labels it.
 STATUS_BYTE_NAME = {
     0x00: "idle",
-    0x01: "charging_cc",
-    0x02: "charging_cv",
-    0x03: "charging",
-    0x04: "done",
-    0x05: "charging_trickle",
-    0x06: "charging",
-    0x07: "discharging",
-    0x09: "paused",
+    0x01: "standby",
+    0x02: "charging",
+    0x03: "discharging",
+    0x04: "resting",
+    0x05: "done",
+    0x06: "done",
 }
 
+# Byte 20 of the 0x91 answer; 0 means no error.
+ERROR_BYTE_NAME = {
+    0x01: "input_voltage_low",
+    0x02: "input_voltage_high",
+    0x03: "battery_disconnected",
+    0x04: "capacity_limit",
+    0x05: "time_limit",
+    0x06: "internal_temperature_high",
+    0x07: "check_failed",
+    0x08: "resistance_too_high",
+    0x09: "battery_disconnected",
+    0x0A: "wrong_battery_type",
+    0x0B: "overload",
+    0x0C: "reversed_polarity",
+    0x0D: "battery_full",
+}
+
+# 0x96 answer: volumes are off/low/medium/high, backlight is 1-3.
+VOLUME_NAME = {0: "off", 1: "low", 2: "medium", 3: "high"}
+END_NOTIFICATION_NAME = {0: "once", 1: "repeat"}
+BACKLIGHT_NAME = {1: "low", 2: "medium", 3: "high"}
+
 CHANNEL_BITMASK = [0x01, 0x02, 0x04, 0x08]  # index -> bitmask, 4 slots
+
+
+def mode_byte(chemistry: str, mode: str) -> int:
+    """Return the 0x94 mode byte for this chemistry, or raise ValueError."""
+    modes = MODES_BY_CHEMISTRY.get(chemistry)
+    if modes is None:
+        raise ValueError(f"Unknown MC5000 chemistry {chemistry!r}")
+    if mode not in modes:
+        raise ValueError(
+            f"Mode {mode!r} is not available for {chemistry}; "
+            f"choose one of {', '.join(modes)}"
+        )
+    return modes[mode]
+
+
+def mode_name(chemistry: str | None, value: int) -> str | None:
+    modes = MODES_BY_CHEMISTRY.get(chemistry or "")
+    if modes is None:
+        return None
+    for name, byte in modes.items():
+        if byte == value:
+            return name
+    return f"unknown_{value}"
 
 
 def _checksum(payload: bytes) -> int:
@@ -200,15 +264,16 @@ class Mc5000Client(ChargerClient):
                 except asyncio.TimeoutError:
                     pass
 
-                # Required init sequence; without it the device ACKs config
-                # (0x94) but silently ignores start/stop (0x93).
-                await self._send(CMD_VERSION, b"\x00\x00\x00\x00\x00")
-                await self._send(CMD_SETTINGS, b"\x00\x00")
-                await self._send(CMD_SLOT_QUERY, b"\x00")
-
+                # Same opening as the app: identify the charger, unlock it
+                # with the default password, decline the firmware update.
+                # 0xFE is deliberately absent: it is the stop command.
                 device_info = await self._query_device_info()
+                await self._send(CMD_VERIFY_PASSWORD, b"\x00\x00\x00\x00\x00")
+                await self._send(CMD_FIRMWARE_CHECK, b"\x00\x00")
+
                 if device_info:
                     self._device_info = device_info
+                await self._query_system_settings()
             except Exception:
                 # Never leave a half-initialised client behind; the charger
                 # only accepts one connection and would refuse the retry.
@@ -229,7 +294,13 @@ class Mc5000Client(ChargerClient):
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("MC5000 disconnect error: %r", err)
 
-    async def _send(self, command: int, data: bytes = b"", expect_response: bool = True) -> bytes | None:
+    async def _send(
+        self,
+        command: int,
+        data: bytes = b"",
+        expect_response: bool = True,
+        timeout: float = NOTIFY_TIMEOUT,
+    ) -> bytes | None:
         client = self._client
         if client is None:
             raise BleakError("MC5000 not connected")
@@ -245,7 +316,7 @@ class Mc5000Client(ChargerClient):
             return None
 
         try:
-            return await asyncio.wait_for(self._notify_queue.get(), timeout=NOTIFY_TIMEOUT)
+            return await asyncio.wait_for(self._notify_queue.get(), timeout=timeout)
         except asyncio.TimeoutError:
             # Happens on every poll while the charger is asleep; the
             # coordinator reports the resulting stale data once, not 360
@@ -253,86 +324,176 @@ class Mc5000Client(ChargerClient):
             _LOGGER.debug("MC5000: no response to command 0x%02x", command)
             return None
 
-    async def _query_device_info(self) -> DeviceData | None:
-        addr = getattr(self._device, "address", "") or ""
-        suffix = bytes.fromhex(addr.replace(":", "")[-8:].rjust(8, "0")) if addr else b"\x00\x00\x00\x00"
-        request = bytes([0x00]) + suffix + b"\xc1\xa4" + b"\x00" * 10
-        resp = await self._send(CMD_HANDSHAKE, request)
-        if not resp or len(resp) < 18:
+    async def _request(
+        self, command: int, data: bytes = b"", timeout: float = NOTIFY_TIMEOUT
+    ) -> bytes | None:
+        """Send a command and return the answer to *that* command.
+
+        The charger volunteers a 0x06 greeting shortly after connecting and
+        it can land after the first command went out; taking whatever
+        notification comes next would shift every answer by one.
+        """
+        resp = await self._send(command, data, timeout=timeout)
+        for _ in range(3):
+            if resp is None or (len(resp) > 2 and resp[2] == command):
+                return resp
+            _LOGGER.debug("MC5000: skipping unrelated notification %s", resp.hex())
+            try:
+                resp = await asyncio.wait_for(self._notify_queue.get(), timeout=timeout)
+            except asyncio.TimeoutError:
+                return None
+        return None
+
+    @staticmethod
+    def _parse_device_info(resp: bytes, address: str = "") -> DeviceData | None:
+        """Decode the 0x57 answer the way the app does.
+
+        The answer is 20 bytes, or 21 when the link negotiated a larger MTU
+        (everything then sits one byte further). Six bytes of model code,
+        then a block whose bytes 11-12 are the firmware version.
+        """
+        if resp is None or len(resp) not in (20, 21):
             return None
 
+        shift = len(resp) - 20
+        model_code = resp[3 + shift : 9 + shift]
+        block = resp[3 + shift : 19 + shift].hex()
+        firmware = f"{resp[14 + shift]}.{resp[15 + shift]:02d}"
+
+        if model_code != MC5000_MODEL_CODE:
+            _LOGGER.debug("MC5000: unexpected model code %s", model_code.hex())
+
+        return DeviceData(
+            name="SkyRC MC5000",
+            address=address,
+            manufacturer="SkyRC",
+            model="MC5000",
+            sw_version=firmware,
+            hw_version=block[27:28] or None,
+        )
+
+    async def _query_device_info(self) -> DeviceData | None:
+        addr = getattr(self._device, "address", "") or ""
+        # macOS hands out a UUID instead of a MAC; the charger answers
+        # either way, so fall back to zeros rather than failing to parse.
         try:
-            serial = resp[4:11].decode("ascii", errors="ignore").strip()
-            fw_major, fw_minor = resp[12], resp[13]
-            hw_major, hw_minor = resp[14], resp[15]
-            return DeviceData(
-                name=f"SkyRC MC5000 {serial}".strip() if serial else "SkyRC MC5000",
-                address=addr,
-                manufacturer="SkyRC",
-                model="MC5000",
-                sw_version=f"{fw_major}.{fw_minor:02d}",
-                hw_version=f"{hw_major}.{hw_minor:02d}",
-            )
+            mac = bytes.fromhex(addr.replace(":", ""))
+        except ValueError:
+            mac = b""
+        if len(mac) != 6:
+            mac = bytes(6)
+
+        # The charger drops whatever it is sent first after a connection,
+        # so ask again when the first request goes unanswered.
+        request = bytes([0x00]) + mac[::-1] + bytes(10)
+        resp = None
+        for _ in range(3):
+            resp = await self._request(CMD_INFO, request, timeout=INFO_TIMEOUT)
+            if resp is not None:
+                break
+        try:
+            return self._parse_device_info(resp, addr)
         except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("MC5000: could not parse handshake response: %r", err)
+            _LOGGER.debug("MC5000: could not parse device info: %r", err)
             return None
 
     @staticmethod
-    def _parse_channel(index: int, payload: bytes) -> ChannelData:
-        # payload = full notification with start+length stripped, i.e.
-        # payload[0]=command(0x91) payload[1]=channel ... payload[-1]=checksum
-        #
-        # Full-packet offsets per docs/PROTOCOL.md (offset 0 = start byte):
-        #   3=channel 4=status 5=current_raw 6-7=voltage 8-9=unused
-        #   10-11=capacity 12-13=unused 14-15=elapsed 16-17=resistance
-        #   18=delta-V 19=chemistry 20=unused 21=slot_index 22=checksum
-        # Since payload already strips the 2 leading bytes (start+length),
-        # subtract 2 from every offset above to index into `payload`.
-        # Full responses are 21 bytes (this stripped payload); BLE MTU can
-        # truncate notifications to ~18 bytes, dropping chemistry/slot
-        # index/checksum. Don't throw the whole channel away for that.
-        if len(payload) < 16:
+    def _apply_system_settings(device: DeviceData, resp: bytes | None) -> None:
+        """Decode the 0x96 answer into the device-level settings."""
+        if resp is None or len(resp) < 10:
+            return
+
+        device.beep_volume = VOLUME_NAME.get(resp[4], f"unknown_{resp[4]}")
+        device.notification_volume = VOLUME_NAME.get(resp[5], f"unknown_{resp[5]}")
+        device.end_notification = END_NOTIFICATION_NAME.get(resp[6], f"unknown_{resp[6]}")
+        # The app shows 0 as the lowest step too.
+        device.backlight = BACKLIGHT_NAME.get(resp[7] or 1, f"unknown_{resp[7]}")
+        device.warning_tone = resp[8] != 0
+        # Older firmware answers without the sleep timer; the last byte is
+        # the checksum, never a setting.
+        device.sleep_timer_minutes = resp[9] if len(resp) >= 11 else None
+
+    async def _query_system_settings(self) -> None:
+        resp = await self._request(CMD_QUERY_SYSTEM, b"\x04")
+        self._apply_system_settings(self._device_info, resp)
+
+    @staticmethod
+    def _parse_channel(index: int, packet: bytes) -> ChannelData:
+        """Decode one 0x91 answer (the full packet, start byte included).
+
+        Offsets, as the app reads them:
+          3 slot bitmask   4-5 current (mA)    6-7 voltage (mV)
+          8-9 temperature  10-11 capacity (mAh)
+          12-15 elapsed (s)  16-17 resistance (mOhm)
+          18 status  19 mode  20 error  21 chemistry
+        Firmware that answers with fewer than 22 bytes uses a 16-bit
+        elapsed time and has no chemistry byte.
+        """
+        if len(packet) < 18:
             return ChannelData(index=index, status="unavailable")
 
-        status_byte = payload[2]
-        current_raw = payload[3]
-        voltage_mv = int.from_bytes(payload[4:6], "big")
-        capacity = int.from_bytes(payload[8:10], "big")
-        elapsed = int.from_bytes(payload[12:14], "big")
-        resistance = int.from_bytes(payload[14:16], "big")
-        chem_byte = payload[17] if len(payload) > 17 else None
+        current_ma = int.from_bytes(packet[4:6], "big")
+        voltage_mv = int.from_bytes(packet[6:8], "big")
+        temperature = int.from_bytes(packet[8:10], "big")
+        capacity = int.from_bytes(packet[10:12], "big")
 
-        if status_byte == 0x00:
-            # Status 0x00 is overloaded; disambiguate per protocol doc.
-            if voltage_mv == 0:
-                status = "empty"
-            elif current_raw > 0:
-                status = "charging"
-            elif elapsed > 0 and capacity > 0:
-                status = "done"
-            else:
-                status = "idle"
-            current_ma = current_raw * 4
+        chem_byte = None
+        error_byte = 0
+        if len(packet) >= 22:
+            elapsed = int.from_bytes(packet[12:16], "big")
+            resistance = int.from_bytes(packet[16:18], "big")
+            status_byte = packet[18]
+            mode_value = packet[19]
+            error_byte = packet[20]
+            chem_byte = packet[21]
+        else:
+            elapsed = int.from_bytes(packet[12:14], "big")
+            resistance = int.from_bytes(packet[14:16], "big")
+            status_byte = packet[16]
+            mode_value = packet[17]
+            if len(packet) == 20:
+                error_byte = packet[18]
+
+        chemistry = (
+            BYTE_TO_CHEMISTRY.get(chem_byte, f"unknown_0x{chem_byte:02x}")
+            if chem_byte is not None
+            else None
+        )
+        error = (
+            ERROR_BYTE_NAME.get(error_byte, f"unknown_{error_byte}") if error_byte else None
+        )
+
+        # Below 5 mV the app considers the slot empty.
+        has_cell = voltage_mv >= 5
+        running = status_byte >= 2
+
+        if error is not None:
+            status = "error"
+        elif not running and not has_cell:
+            status = "empty"
         else:
             status = STATUS_BYTE_NAME.get(status_byte, f"unknown_{status_byte:02x}")
-            multiplier = 10 if status_byte == 0x07 else 4
-            current_ma = current_raw * multiplier
+
+        if not has_cell and not running:
+            # Nothing in the slot: the chemistry and mode bytes still hold
+            # the previous program, which says nothing about this state.
+            return ChannelData(
+                index=index, status=status, voltage=0.0, current=0.0, error=error
+            )
 
         return ChannelData(
             index=index,
             status=status,
-            chemistry=(
-                STATUS_CHEM_BYTE_TO_NAME.get(chem_byte, f"unknown_0x{chem_byte:02x}")
-                if chem_byte is not None
-                else None
-            ),
-            mode=None,
-            voltage=round(voltage_mv / 1000, 3) if voltage_mv else 0.0,
-            current=round(current_ma / 1000, 3),
-            capacity=capacity,
-            temperature=None,
-            resistance=resistance,
-            time=elapsed,
+            # While idle these two still describe the previous program.
+            chemistry=chemistry if running else None,
+            mode=mode_name(chemistry, mode_value) if running else None,
+            voltage=round(voltage_mv / 1000, 3),
+            current=round(current_ma / 1000, 3) if running else 0.0,
+            capacity=capacity if running else None,
+            temperature=temperature if running and temperature else None,
+            resistance=resistance if running else None,
+            time=elapsed if running else None,
+            error=error,
         )
 
     async def async_update(self) -> ChargerState:
@@ -341,19 +502,23 @@ class Mc5000Client(ChargerClient):
 
         channels: list[ChannelData] = []
         for index, bitmask in enumerate(CHANNEL_BITMASK):
-            resp = await self._send(CMD_STATUS, bytes([bitmask]))
+            resp = await self._request(CMD_STATUS, bytes([bitmask]))
             if resp is None or len(resp) < 4:
                 channels.append(ChannelData(index=index, status="unavailable"))
                 continue
-            # resp = full packet [0f, len, 91, channel, status...]; strip
-            # start+length, keep cmd..checksum for parsing convenience.
-            body = resp[2:]
-            channels.append(self._parse_channel(index, body))
+            channels.append(self._parse_channel(index, resp))
 
         return ChargerState(device=self._device_info, channels=channels)
 
     def _build_config_payload(self, channel: int, **kwargs) -> bytes:
-        chemistry = kwargs.get("chemistry") or "liion"
+        # No default: guessing lithium for a NiMH cell would charge it to
+        # 4.2 V. The caller has to say what is in the slot.
+        chemistry = kwargs.get("chemistry")
+        if not chemistry:
+            raise ValueError(
+                f"Slot {channel + 1}: the MC5000 needs a chemistry to start; pass one "
+                "or set the slot's expected chemistry"
+            )
         mode = kwargs.get("mode") or "charge"
         charge_current = int(kwargs.get("current", 1000))
         discharge_current = int(kwargs.get("discharge_current", charge_current))
@@ -366,7 +531,7 @@ class Mc5000Client(ChargerClient):
         trickle_x10 = int(kwargs.get("trickle_ma", 0)) // 10
         keep_mv = int(kwargs.get("keep_mv", 0))
         cutoff_timer_min = int(kwargs.get("cutoff_timer_min", 0))
-        max_time_min = int(kwargs.get("max_time_min", 300))
+        temperature_cutoff_c = int(kwargs.get("temperature_cutoff_c", 71))
         chem_byte = CHEMISTRY_TO_BYTE.get(chemistry, 0x00)
         if "secondary" in kwargs:
             secondary = int(kwargs["secondary"])
@@ -379,7 +544,7 @@ class Mc5000Client(ChargerClient):
 
         data = bytearray(40)
         data[0] = CHANNEL_BITMASK[channel] if channel is not None else 0x00
-        data[1] = MODE_TO_BYTE.get(mode, 0x00)
+        data[1] = mode_byte(chemistry, mode)
         data[2:4] = _u16(charge_current)
         data[4:6] = _u16(discharge_current)
         data[6:8] = _u16(capacity)
@@ -394,69 +559,54 @@ class Mc5000Client(ChargerClient):
         data[22] = delta_peak_mv
         data[23] = trickle_x10
         data[24:26] = _u16(keep_mv)
-        data[26] = 0x3C
-        data[27:29] = _u16(cutoff_timer_min)
-        data[29:31] = _u16(max_time_min)
-        data[31] = 0x00
+        data[26] = temperature_cutoff_c  # the app sends 71 by default
+        data[27:29] = _u16(cutoff_timer_min)  # safety timer, minutes
+        # data[29:31] turbo charge capacity and data[31] turbo mode stay off
         data[32] = chem_byte
         data[33:35] = _u16(secondary)
-        # data[35:40] padding stays zero
+        data[35] = int(kwargs.get("eneloop_type", 0))
+        # data[36:40] padding stays zero
         return bytes(data)
 
-    def _merge_config(self, channel: int, kwargs: dict) -> dict:
-        config = dict(self._last_config.get(channel, {}))
-        config.update(kwargs)
-        self._last_config[channel] = config
-        return config
+    async def _send_program(self, channel: int, payload: bytes) -> None:
+        resp = await self._request(CMD_CONFIG, payload)
+        # The charger answers 0x94 with 1 when it took the program.
+        if resp is not None and len(resp) > 4 and resp[4] != 1:
+            raise BleakError(f"MC5000 refused the program for slot {channel + 1}")
 
     async def start_channel(self, channel: int, **kwargs) -> None:
-        """Send a fresh 0x94 config for this channel then start it.
+        """Write a complete program to the slot, which starts it.
 
-        The MC5000 protocol has no "use last configured program" command
-        (unlike the MC3000); the app always pushes a complete config
-        before starting. We do the same here, defaulting any field the
-        caller doesn't supply.
+        The MC5000 has no "use the last program" command: the app always
+        pushes a full 0x94 program, and that write is the start. Any field
+        the caller doesn't supply gets a default.
         """
-        config = self._merge_config(channel, kwargs)
-
+        config = {**self._last_config.get(channel, {}), **kwargs}
         payload = self._build_config_payload(channel, **config)
-        await self._send(CMD_CONFIG, payload)
-        await self._send(CMD_START_STOP, bytes([CHANNEL_BITMASK[channel]]))
+        self._last_config[channel] = config
+        await self._send_program(channel, payload)
 
     async def start_all(self, per_channel: dict[int, dict] | None = None, **kwargs) -> None:
-        """Start every slot with a single 0x93.
-
-        0x93 carries the complete set of slots that should be running, so
-        starting them one at a time (the default ChargerClient behaviour)
-        would leave only the last slot going. Push each slot's config
-        first, then arm them all in one command.
-        """
         per_channel = per_channel or {}
-        mask = 0
+        # Build every program before writing any, so one invalid slot
+        # doesn't leave the others half started.
+        payloads = []
         for channel in range(self.channel_count):
-            config = self._merge_config(channel, {**kwargs, **per_channel.get(channel, {})})
-            await self._send(CMD_CONFIG, self._build_config_payload(channel, **config))
-            mask |= CHANNEL_BITMASK[channel]
+            config = {
+                **self._last_config.get(channel, {}),
+                **kwargs,
+                **per_channel.get(channel, {}),
+            }
+            payloads.append((channel, config, self._build_config_payload(channel, **config)))
 
-        await self._send(CMD_START_STOP, bytes([mask]))
+        for channel, config, payload in payloads:
+            self._last_config[channel] = config
+            await self._send_program(channel, payload)
 
     async def stop_channel(self, channel: int) -> None:
-        # IMPORTANT CAVEAT: the MC5000 0x93 command appears to treat its
-        # channel-bitmask argument as a "set the complete active slot set
-        # to exactly this" instruction, not a per-slot stop. The reference
-        # protocol doc is ambiguous/contradictory on this point (one frame
-        # is annotated as being captured "while stopping a single slot",
-        # but the same byte pattern is documented elsewhere as "start
-        # slot"). To avoid accidentally starting the wrong slot, we do not
-        # rely on that behaviour: stopping a single channel falls back to
-        # stopping everything, which is the one action that is solidly
-        # validated in the protocol doc.
-        _LOGGER.info(
-            "MC5000: per-slot stop is not reliably documented; stopping all "
-            "slots instead of channel %s",
-            channel,
-        )
-        await self.stop_all()
+        await self._request(CMD_STOP, bytes([CHANNEL_BITMASK[channel]]))
 
     async def stop_all(self) -> None:
-        await self._send(CMD_START_STOP, b"\x00")
+        # One slot per command, like the app; a combined mask is untested.
+        for channel in range(self.channel_count):
+            await self.stop_channel(channel)
